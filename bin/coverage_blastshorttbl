@@ -28,6 +28,82 @@
 #
 # $Id$
 #
+
+
+=pod
+
+=head1 B<coverage_blastshorttbl>
+
+coverage_blastshorttbl - Coverage summary for BLAST output
+
+=head1 B<SYNOPSIS>
+
+coverageblasttbl.pl [options] blast.output6.tbl > coverage.tbl
+
+=head1 B<OPTIONS>
+
+=over 6
+
+=item -prog [ BLASTN | BLASTP | BLASTX | TBLASTX | TBLASTN ]
+
+=item -Qaa
+
+=item -Taa
+
+=item -debug
+
+=back
+
+
+=head1 B<DESCRIPTION>
+
+Computes different coverage statistics for each Query and each Target
+of a BLAST run. 
+
+=head2 B<Input requirements>
+
+Run BLAST with the following option:
+
+-outfmt '6 qseqid qlen sseqid slen qstart qend sstart send length
+           score evalue bitscore pident nident mismatch positive gapopen gaps ppos qframe sframe qseq sseq'
+
+=head2 B<Output table>
+
+=over 6
+
+=item B<1.> Query(Q)/Target(T)
+
+=item B<2.> Query/Target Id
+
+=item B<3.> Query/Target length
+
+=item B<4.> Total Forward(+) alignment length
+
+=item B<5.> Total Forward(+) alignment coverage
+
+=item B<6.> Total Reverse(-) alignment length
+
+=item B<7.> Total Reverse(-) alignment coverage
+
+=item B<8.> Total NoStrand(.) alignment length
+
+=item B<9.> Total NoStrand(.) alignment coverage
+
+=item B<10.> Total All(+,-,.) alignment length
+
+=item B<11.> Total All(+,-,.) alignment coverage
+
+=item B<12.> BestHit alignment length
+
+=item B<13.> BestHit alignment coverage
+
+=item B<14.> BestHit information (id, length, score, e-value)
+
+=back
+
+=cut
+
+
 # USAGE:
 #   coverageblasttbl.pl [options] blast.output6.tbl > coverage.tbl
 #
