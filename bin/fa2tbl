@@ -36,7 +36,7 @@ BEGIN{
     &init_timer(\@exectime);
 }
 #
-use largeseqs qw( :PERLiofh :MULTIfasta :SAVEtbl );
+use CGL::Largeseqs qw( :PERLiofh :MULTIfasta :SAVEtbl );
 #
 # VARS
 $PROG = 'fa2tbl.pl';
@@ -50,7 +50,7 @@ USAGE:
 DESCRIPTION:
 
   Converting a sequence input stream in fasta format to tabular.
-  It is quite fast as it uses C functions from largeseqs.pm (via
+  It is quite fast as it uses C functions from CGL::Largeseqs.pm (via
   Inline perl module).
 
 

@@ -35,7 +35,7 @@ use warnings;
 #
 use CGL::Global qw( :Counter    :CommandLine  :GetFH
                :ExecReport :ExecMessages :Exit  );
-use largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta
+use CGL::Largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta
 		            :MULTItbl   :SAVEtbl
 		            :MULTIqual  :SAVEqual );
 #
@@ -51,7 +51,7 @@ USAGE:
 DESCRIPTION:
 
    Using a gene list to filter records from another files, including
-   files in fasta format or tabular (via largeseqs.pm).  Now also
+   files in fasta format or tabular (via CGL::Largeseqs.pm).  Now also
    featuring record extraction from quality files in fasta format.
 
 

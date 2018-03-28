@@ -4,7 +4,7 @@ use warnings;
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
-    NAME             => 'CGL::Global',
+    NAME             => 'CGL',
     AUTHOR           => q{JF Abril <jabril@ub.edu>},
     VERSION_FROM     => 'lib/CGL/Global.pm',
     ABSTRACT_FROM    => 'lib/CGL/Global.pm',
@@ -23,5 +23,5 @@ WriteMakefile(
         #'Foo::Bar::Module' => '5.0401',
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
-    clean => { FILES => 'CGL-Global-*' },
+    clean => { FILES => 'CGL-*' },
 );
