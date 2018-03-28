@@ -1,0 +1,334 @@
+#!/usr/bin/perl
+#
+# cdna2orfs.pl
+#
+#   Translating cDNA sequences into open reading frames
+#
+# ####################################################################
+#
+#      Copyright (C) 2003/2016 - Josep F. ABRIL FERRANDO
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+# ####################################################################
+#
+# $Id: cdna2orfs.pl,v 1.1 2012/08/08 18:12:32 root Exp root $
+#
+use strict;
+use warnings;
+BEGIN{
+    use CGL::Global qw( :Benchmark :ExecReport :CommandLine :GetFH :Exit &max );
+    &init_timer(\@exectime);
+}
+#
+use largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta :TRANSLATE :REVCOMPseq :SBSTRseqs );
+#
+# use Data::Dumper;
+#
+# VARS
+$PROG = 'cdna2orfs.pl';
+$VERSION = '1beta';
+$USAGE =<<'+++EOH+++';
+USAGE:
+
+  cdna2orfs.pl [ options ] < prot_seq.tbl > prot_seq.fasta
+
+
+DESCRIPTION:
+
+  Translating an input stream of cDNA sequences in fasta format to
+  all the possible open reading frames, output is also in fasta format.
+  The program assumes the sequence to be in forward strand.
+  It is quite fast as it uses C functions from largeseqs.pm (via
+  Inline perl module).
+
+
+COMMAND-LINE OPTIONS:
+
+  -N, --do-not-translate
+    Return de ORF sequences at nucleotide level instead of the
+    translated ORFs, which is the default option.
+
+  -B, --both-strands
+    Check forward and reverse, by default only looking at forward.
+    Useful when not sure if proper orientation was given for
+    the RNA/cDNA sequence.
+
+  -l, --largest-only
+  -m, --min-length <integer>
+    By default all the possible open reading frames are calculated.
+    When 'l' switch is provided, then returns only the largest of all
+    the ORFs obtained when the input sequence is translated
+    in all three phases from the initial nucleotide.
+    The 'm' switch allows to define a length cut-off, where <integer>
+    refers to the minimum amino acid length that an ORF should have to
+    be outputed.
+    If both options are provided, 'l' and 'm', for each cDNA sequence,
+    the largest ORF is printed out only when it is larger than
+    the length cutoff.
+
+  -u, --unique-orf
+    If more than one ORF has the same length, the one with the
+    smaller phase is printed when filtering by length.
+
+  -d, --full-orf-desc
+    Append the location, strand and phase information to the
+    sequence description.
+
+  -Z, --gzip-output
+    Compress output on the fly and send to stdout.
+
++++EOH+++
+#
+my ($gzip,$noprot,$minplen,$stopstd,$bothstr,$descflg,$lenflg,$uniqflg,$ifile);
+$noprot  = 0;
+$gzip    = 0;
+$minplen = 0;
+$lenflg  = 0;
+$bothstr = 0;
+$uniqflg = 0;
+$descflg = 0;
+$stopstd = 1; # Leave as is to use standard stop codon symbol '*' when translating
+#
+# ARGVS         # 'S|standard-fasta'   => \$stopstd, # this was inherited from cds2prot.pl
+&add_cmdline_opts('N|do-not-translate' => \$noprot,
+                  'B|both-strands'     => \$bothstr,
+                  'l|largest-only'     => \$lenflg,
+                  'm|min-length=i'     => \$minplen,
+                  'u|unique-orf'       => \$uniqflg,
+                  'd|full-orf-desc'    => \$descflg,
+                  'Z|gzip-output'      => \$gzip);
+&parse_cmdline();
+$ifile = (shift @ARGV) || '-';
+$minplen = int($minplen); # ensuring integer cutoff
+$descflg = $descflg ? 0 : 1; # invert value to speed up a loop
+#
+# MAIN
+set_verbose(0, 50, 0, $_verbose{DEBUG}); # $_verbose{RAW} 
+           # verbose ON/OFF
+           # (here we are parsing sequences char by char, not by lines)
+           # 50 chars x dot ~ 1line x dot, 50 lines x report_line
+           #   50 lines x report_line * 50bp x line = 2500aa
+           # 0 -> use default value
+           # debug ON/OFF
+&program_started($PROG);
+&parse_input_seqs($ifile,$gzip,$bothstr);
+&program_finished($PROG);
+&EXIT('OK');
+#
+# SUBS
+sub parse_input_seqs($$$) {
+    my ($file,$gzip,$bsf,$seqid,$desc,$seq,$seqlen,@t,%o,@orfs,$q,$p,$l,
+        $strnd,$pn,$ok,$ko,$MINplen,$ofl,$IFH,$sin_flg,$OFH,$sout_flg);
+    # $file = shift || '-';
+    print STDERR "###\n".
+            "### STOP CODONS CHARSET is ".($stopstd ? "STANDARD" : "EXTENDED").
+          "\n### CUTOFF set to $minplen aa\n".
+            "### Return ONLY LARGEST ORF is ".($lenflg ? "ON" : "OFF").
+          "\n###\n"  if $_verbose{RAW};
+    ($file,$gzip,$bsf) = @_;
+    ($IFH, $sin_flg) = &getIFH($file);
+    set_perlfh($IFH, 0, $sin_flg); # 0~input_file :: 1~output_file
+    $ofl = $gzip ? '| gzip '.($_verbose{RAW} ? '-v ' : '').'--best -' : '-';
+    ($OFH, $sout_flg) = &getOFH($ofl);
+    set_perlfh($OFH, 1, $sout_flg); # 0~input_file :: 1~output_file
+    $pn = $ok = $ko = 0; %o = ();
+    while (get_large_fasta_seqs($seqid,$desc,$seq,$seqlen)) {
+        print STDERR "#-> $seqid [$seqlen bp|aa]\n" if $_verbose{RAW};
+	$MINplen = $minplen;
+        @orfs = ();
+	$strnd = '+';
+      REVCHK: {
+	  do {
+	      reversecompl(\$seq,$seqlen) if $strnd eq '-';
+	      for my $frame (0, 1, 2) {
+		  my $fs = $frame.$strnd;
+		  $l = translate($seq, $p, $frame, $stopstd);
+		  @t = ();
+		  if ($descflg && !$noprot) {
+		      # if $stopstd then simplifying [\#\@\!\*] to \*
+		      @t = split /\*/o, $p;
+		      @t = map { $q = $_; $q unless ($q =~ /^\s*$/o) } @t;
+		      #
+		      # print STDERR ":: ",join(" ::\n:: ",@t)," ::\n";
+		  } else {
+		      #
+		      $o{$fs} = [];
+		      &get_orf_info(\$p,$frame,$strnd,$seqlen,\@t,$o{$fs},\$seq);
+		      #
+		      # print STDERR ":: ",join(" ::\n:: ",@t)," ::\n";
+		  };
+		  $ko += scalar(@t);
+		  # print STDERR "$seqid $frame: @t\n";
+		  push @orfs, [ $fs, @t ];
+		  $lenflg && do {
+		      $MINplen = &max($MINplen, map { length($_) } @t);
+		      print STDERR "$seqid $MINplen\n" if $_verbose{DEBUG};
+		  };
+	      };
+	      last REVCHK if $strnd eq '-';
+	      $strnd = '-';
+	  } while ($bsf == 1);
+	}; # REVCHK
+	my $skf = 0;
+ 	# print STDERR Data::Dumper->Dump([ \@orfs ],[ qw( \*ORFS ) ]),"\n";
+        for my $frame (@orfs) {
+            # $desc = "$seqid $frame";
+            # print STDERR "$desc: @{ $orfs[$frame] }\n";
+	    $strnd = shift @$frame;
+            for (my $i = 0; $i < scalar(@$frame); $i++) {
+		my $str = $frame->[$i];
+                $l = length($str);
+                ($l == 0 || $l < $MINplen || $skf == 1) && next;
+		#
+		if ($noprot) {
+		    if ($descflg) {
+			$desc = "${seqid}.$strnd".($stopstd ? '' : " ${l}aa phase: $strnd");
+		    } else {
+			my ($pl,$p1,$p2,$P1,$P2) = @{ $o{$strnd}[$i] };
+			$desc = "${seqid}.$strnd".($strnd =~ /-/o ? $P2 : $P1).($stopstd ? '' : " ${l}aa phase: $strnd")." C: ${pl}aa / $p1 $p2 / $P1 $P2 / ${seqlen}bp $strnd";
+		    };
+		} else {
+		    if ($descflg) {
+			$desc = "${seqid}.$strnd.aa".($stopstd ? '' : " ${l}aa phase: $strnd");
+		    } else {
+			my ($pl,$p1,$p2,$P1,$P2) = @{ $o{$strnd}[$i] };
+			$desc = "${seqid}.$strnd".($strnd =~ /-/o ? $P2 : $P1).".aa".($stopstd ? '' : " ${l}aa phase: $strnd")." C: ${pl}aa / $p1 $p2 / $P1 $P2 / ${seqlen}bp $strnd";
+		    };
+		};
+		#
+                save_fasta($desc, $str);
+                $ok++;
+		$skf = 1 if $lenflg && $uniqflg;
+            };
+        };
+        $pn++;
+    }; # while <FAF>
+    close($IFH) unless $sin_flg  == 2;
+    close($OFH) unless $sout_flg == 2;
+    # just to ensure that memory is cleaned (also buffers and/or swap)
+    undef $seqid; undef $desc;
+    undef $seq; undef $seqlen; undef $p; undef $l;
+    print STDERR "###\n### From $pn cDNAs, $ok out of $ko ORFs were filtered...\n"
+        if $_verbose{RAW};
+} # parse_input_seqs
+
+sub get_orf_info($$$$$$$) {
+    my ($p,$f,$r,$L,$t,$o,$Q,$l,$p1,$p2,$p3,$s);
+    ($p,$f,$r,$L,$t,$o,$Q) = @_;
+    $$p .= '*'; # a small trick to force last ORF into push commands
+    $l = length($$p);
+    $L += 1; # to fix reverse coords... ;^D
+    $p1 = $p2 = 1;
+    $s = '';
+    # print STDERR "PROT $f $r $l $L : $$p\n";
+    for (my $n = 0; $n < $l; $n++) {
+	my $c = substr($$p,$n,1);
+	# print STDERR "N=$n : P1 $p1  P2 $p2 : $s \n";
+	# if $stopstd then simplifying [\#\@\!\*] to \*
+	$c =~ /\*/o && do {
+	    $p1 < $p2 && do { # save orf
+		$p3 = $p2 - 1;
+		my $nuco = ($p1 * 3) - 2 + $f;
+		my $nuce = ($p3 * 3) + $f;
+		if ($r eq '-') { # reverse
+		    push @$o, [ $p3 - $p1 + 1,
+				$p1, $p3,             # aa  coords
+				$L - $nuco,   # nuc coords
+				$L - $nuce ];
+		} else { # forward
+		    push @$o, [ $p3 - $p1 + 1,
+				$p1, $p3,             # aa  coords
+				$nuco,   # nuc coords
+				$nuce ];
+		};
+		if ($noprot) { # save nucleotide sequence
+		    my @ss = ();
+		    substr_largeseq($$Q, $L-1, [ $nuco, $nuce ], \@ss, '+');
+		    push @$t, $ss[0];
+		    # printf STDERR "ORF %d %dbp o%d-e%d %s %s %s\n", $n, $L-1, $nuco, $nuce, $f.$r, $ss[0], $s
+		    # 	if $_verbose{RAW};
+		    $s = '';
+		} else { # save amino acid sequence
+		    push @$t, $s;
+		    $s = '';
+		};
+		# print STDERR join(" ",@$t),"\n";
+	    };
+	    $p1 = ++$p2;
+	    next;
+	};
+	$s .= $c;
+	$p2++;
+    };
+} # get_orf_info
+
+__END__
+##################################################
+
+# INPUT EXAMPLE
+
+>ID4349
+TATAATGATGATGGAATTAATGATATATTWCTCTTTAGAGAATATTGCAC
+AGTTTATGATTTTGGCCACCGATCGCTTTGGCTGGACGAACAAGATAGGC
+ATTGCTGCCAATAACAAACAACAGTCTCCCCAATGTGTCTGTACCGGAAA
+TTGCAACCATTGCGGTCATTTTACCATTTAATTGTTTGTTATGATGACCG
+ATAAAATTTATTCGCTGAATCAGGATAAAATCATTTCGCTTGCGAACCCA
+AAAAACCCTATTTTGTCGACAATCGAGAAACATAACCCGATTGTCTCCAC
+TAATTGTGATATGAGAAGGAATAGCATTGTAGATTTGATCAGTTCCCAAC
+TGCCTGTAAGAACCCGTTTCTTCATCAATAATGATAATCCTACCATCTTG
+TGGACAAGAAGCCCATATTTCAGCTGTGTCTTGATTTTGAGTAATGAACG
+ACGGATGCAAATCGGTAAAATGATAACCATGACTGGTTTCCACAAGGTTG
+CTCGTCATGATCGCAATTTTACAGGCATCAGGAATAGCTAATAAAATCTT
+CCCGCTTCCTGGGTCAATATGAAATCCAGCAATCTTCGTTGTTATATCAT
+GGGAACTATTAAAAACTGAAGTGTGAATAAGTTCCCCTGTAAGCGATGAT
+TGAATAAGATAATAATGTTTTTCTTTGGTTGCACTGTTTTCAATATAACC
+ACTGAGAAATAACTCATTGTTATAGATTTTCAAAAAAATACGGTTTGACT
+TCACATGAGTCTATTTGAATAGTGAAATCATGGACAGAATGGTCTGGAGT
+TTTGACAGCAATAAGGTTTCCATGGACTGACGTCCATACAATCACCTCGG
+CTTCATGGTTCAACAACTTTATGTCCGCAATTATCATTTTATTACGTCCT
+GAAGAATGAAAGTTAACAATTGAATGGTTGACATCTCTCAGCAATTTATA
+TTCGCTGTATTTTCTCATGTTCTCTCGTATTGTTTCAACATCCATCAATT
+CATAATTAGAGTTAAATATTTCCATGTTGGTAACGGAATGCAAAATTGCA
+TTCTCACTCTCAGACGGCTGTGACTCAATCACTAGTGGAGTATCGATAGA
+TTTCAATATTTCATGGAATTGTTCCTGGTTCGATTTGGATTTTGTATACT
+CGCTGATTTCTCGTATCAAATGCTTGACAAGTTCGCGCTTCTGGTCAACA
+GTCGTAGAGATTGATTTCAATAATACTTTCATTGCTCAGATATT
+
+# EXPECTED OUTPUT
+
+>ID4349.1-.aa C: 241aa / 162 402 / 760 38 / 1244bp 1-
+THVKSNRIFLKIYNNELFLSGYIENSATKEKHYYLIQSSLTGELIHTSVF
+NSSHDITTKIAGFHIDPGSGKILLAIPDACKIAIMTSNLVETSHGYHFTD
+LHPSFITQNQDTAEIWASCPQDGRIIIIDEETGSYRQLGTDQIYNAIPSH
+ITISGDNRVMFLDCRQNRVFWVRKRNDFILIQRINFIGHHNKQLNGKMTA
+MVAISGTDTLGRLLFVIGSNAYLVRPAKAIGGQNHKLCNIL
+
+# CROSS-VALIDATION WITH CDS2PROT.PL OUTPUT
+
+>ID4349.-1.aa 414[414.7] aa strand:REV phase:1
+ISEQ*KYY*NQSLRLLTRSANLSSI*YEKSASIQNPNRTRNNSMKY*NLS
+ILH**LSHSRLRVRMQFCIPLPTWKYLTLIMN*WMLKQYERT*ENTANIN
+C*EMSTIQLLTFILQDVIK**LRT*SC*TMKPR*LYGRQSMETLLLSKLQ
+TILSMISLFK*-161
+       162-THVKSNRIFLKIYNNELFLSGYIENSATKEKHYYLIQSS
+LTGELIHTSVFNSSHDITTKIAGFHIDPGSGKILLAIPDACKIAIMTSNL
+VETSHGYHFTDLHPSFITQNQDTAEIWASCPQDGRIIIIDEETGSYRQLG
+TDQIYNAIPSHITISGDNRVMFLDCRQNRVFWVRKRNDFILIQRINFIGH
+HNKQLNGKMTAMVAISGTDTLGRLLFVIGSNAYLVRPAKAIGGQNHKLCN
+IL-402
+  *RXIYH*FHHHY-414
+
+##################################################
