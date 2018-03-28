@@ -1,7 +1,7 @@
 #
 # CGL::Global
 #
-#   global perl functions,
+#   CGL::Global perl functions,
 #   maybe will be better to split into several packages.
 #
 # ####################################################################
@@ -24,9 +24,9 @@
 #
 # ####################################################################
 #
-# $Id: global.pm,v 1.1 2007/12/04 10:17:59 lopep Exp lopep $
+# $Id: CGL::Global.pm,v 1.1 2007/12/04 10:17:59 lopep Exp lopep $
 #
-package global;
+package CGL::Global;
 use strict;
 use warnings;
 use vars qw(
@@ -119,7 +119,7 @@ $stdin_flg = $F; # by default main input is read from file
 $ERRFH = \*STDERR;
 ($T,$F) = (1,0);
 $PLVER = sprintf("v%vd",$^V);
-$LIBPM = 'global.pm';
+$LIBPM = 'CGL::Global.pm';
 $PROG  = 'UNDEF';
 $VERSION = 'UNDEF';
 $USAGE = 'WARNING: Program variable "$USAGE" was not defined yet...';
@@ -768,11 +768,11 @@ sub match_argv_num() {
 sub add_cmdline_opts() {
     my %NewOpts = @_;
     foreach my $k (keys %NewOpts) {
-        defined($global::CmdLineOpts{$k}) && do {
+        defined($CGL::Global::CmdLineOpts{$k}) && do {
             &warn('WARN', "ALREADY DEFINED COMMAND-LINE SWITCH >>$k<< !!!");
             next;
         };
-        $global::CmdLineOpts{$k} = $NewOpts{$k};
+        $CGL::Global::CmdLineOpts{$k} = $NewOpts{$k};
     };
 } # add_cmdline_opts
 sub parse_cmdline() {
@@ -1049,5 +1049,5 @@ sub counter_end() { # $_[0]~current_pos   $_[1]~char
 } # counter_end
 
 #
-# Exiting from "global" package
+# Exiting from "CGL::Global" package
 1;
