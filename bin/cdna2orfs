@@ -33,7 +33,7 @@ BEGIN{
     &init_timer(\@exectime);
 }
 #
-use largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta :TRANSLATE :REVCOMPseq :SBSTRseqs );
+use CGL::Largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta :TRANSLATE :REVCOMPseq :SBSTRseqs );
 #
 # use Data::Dumper;
 #

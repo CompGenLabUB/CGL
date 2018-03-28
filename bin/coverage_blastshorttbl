@@ -38,7 +38,7 @@ coverage_blastshorttbl - Coverage summary for BLAST output
 
 =head1 B<SYNOPSIS>
 
-coverageblasttbl.pl [options] blast.output6.tbl > coverage.tbl
+coverageblasttbl [options] blast.output6.tbl > coverage.tbl
 
 =head1 B<OPTIONS>
 
