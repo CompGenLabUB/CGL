@@ -21,6 +21,8 @@ Includes:
 
 * coverage_blastshorttbl
 
+* ccdna2orfs
+
 
 # INSTALLATION
 
