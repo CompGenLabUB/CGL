@@ -33,7 +33,7 @@ To install this module, run the following commands:
 	make install
 ```
 
-LICENSE AND COPYRIGHT
+# LICENSE AND COPYRIGHT
 
 Copyright (C) 2018 JF Abril
 
