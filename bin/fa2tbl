@@ -1,0 +1,121 @@
+#!/usr/bin/perl
+#
+# fa2tbl.pl
+#
+#   Converting a sequence input stream in fasta format to tabular
+#
+# ####################################################################
+#
+#        Copyright (C) 2003 - Josep Francesc ABRIL FERRANDO
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+# ####################################################################
+#
+# $Id: perlscripts.nw,v 1.7 2003/09/04 14:36:18 lopep Exp lopep $
+#
+# USAGE:
+#   fa2tbl.pl < prot_seq.fasta > prot_seq.tbl
+#
+use strict;
+use warnings;
+BEGIN{
+    use CGL::Global qw( :Benchmark :ExecReport :CommandLine :GetFH :Exit );
+    &init_timer(\@exectime);
+}
+#
+use largeseqs qw( :PERLiofh :MULTIfasta :SAVEtbl );
+#
+# VARS
+$PROG = 'fa2tbl.pl';
+$VERSION = '1alpha';
+$USAGE =<<'+++EOH+++';
+USAGE:
+
+  fa2tbl.pl [ options ] < prot_seq.fasta > prot_seq.tbl
+
+
+DESCRIPTION:
+
+  Converting a sequence input stream in fasta format to tabular.
+  It is quite fast as it uses C functions from largeseqs.pm (via
+  Inline perl module).
+
+
+COMMAND-LINE OPTIONS:
+
+  -Z, --gzip-output
+    Compress output on the fly and send to stdout.
+
+  -T, --use-tabs
+    Using tab char instead of whitespace to separate output fields.
+
++++EOH+++
+#
+my $tabs = 0;
+my $gzip = 0;
+#
+# ARGVS
+&add_cmdline_opts('Z|gzip-output' => \$gzip,
+                  'T|use-tabs'    => \$tabs);
+&parse_cmdline();
+#
+($tabs == 1) && ($TS = "\t"); # TS equals to whitespace by default...
+#
+my $ifile = (shift @ARGV) || '-';
+#
+# MAIN
+set_verbose($_verbose{RAW}, 50, 0, $_verbose{DEBUG});
+           # verbose ON/OFF
+           # 1 lines x dot, 50 lines x report_line
+           #   50 lines x report_line * 50bp x line = 2500aa
+           # 0 -> use default value
+           # debug ON/OFF
+&program_started($PROG);
+&parse_input_seqs($ifile,$gzip);
+&program_finished($PROG);
+&EXIT('OK');
+#
+# SUBS
+sub parse_input_seqs() {
+    my ($file,$gzip,$seqid,$desc,$seq,$seqlen,$pn,
+        $ofl,$IFH,$sin_flg,$OFH,$sout_flg);
+    # $file = shift || '-';
+    ($file,$gzip) = @_;
+    ($IFH, $sin_flg) = &getIFH($file);
+    set_perlfh($IFH, 0, $sin_flg); # 0~input_file :: 1~output_file
+    $ofl = $gzip ? '| gzip '.($_verbose{RAW} ? '-v ' : '').'--best -' : '-';
+    ($OFH, $sout_flg) = &getOFH($ofl);
+    set_perlfh($OFH, 1, $sout_flg); # 0~input_file :: 1~output_file
+    # $ifh = open_input_file($file);
+    # $ofh = open_output_file('-');
+    $pn = 0;
+    # print STDERR "##\n" if $_verbose{RAW};
+    while (get_large_fasta_seqs($seqid,$desc,$seq,$seqlen)) {
+        print STDERR "#-> $seqid [$seqlen bp|aa]\n" if $_verbose{RAW};
+        ($desc eq 'undef') && ($desc = '');
+        save_tbl($seqid,$seq,$desc);
+        # print STDERR "##\n" if $_verbose{RAW};
+        $pn++;
+    }; # while <FAF>
+    close($IFH) unless $sin_flg  == 2;
+    close($OFH) unless $sout_flg == 2;
+    # close_file($ifh,0); # 0~input_file :: 1~output_file
+    # close_file($ofh,1);
+    # just to ensure that memory is cleaned (also buffers and/or swap)
+    undef $seqid; undef $desc; undef $seq; undef $seqlen;
+    print STDERR "###\n### $pn sequences converted to tabular format...\n"
+        if $_verbose{RAW};
+} # parse_input_seqs

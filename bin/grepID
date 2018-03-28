@@ -1,0 +1,420 @@
+#!/usr/bin/perl
+#
+# grepID.pl
+#
+#   Using a gene list to filter records from another files
+#   including files in fasta format or tabular (via largeseqs)
+#
+# ####################################################################
+#
+#        Copyright (C) 2003 - Josep Francesc ABRIL FERRANDO
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+# ####################################################################
+#
+# $Id: perlscripts.nw,v 1.7 2003/09/04 14:36:18 lopep Exp lopep $
+#
+# USAGE:
+#   grepID.pl [options] ids.file genes.file > filtered_genes.file
+#
+use strict;
+use warnings;
+#
+use CGL::Global qw( :Counter    :CommandLine  :GetFH
+               :ExecReport :ExecMessages :Exit  );
+use largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta
+		            :MULTItbl   :SAVEtbl
+		            :MULTIqual  :SAVEqual );
+#
+# VARS
+$PROG = 'grepID.pl';
+$VERSION = '1.0alpha';
+$USAGE =<<'+++EOH+++';
+USAGE:
+
+   grepID.pl [options] ids.file genes.file > filtered_genes.file
+
+
+DESCRIPTION:
+
+   Using a gene list to filter records from another files, including
+   files in fasta format or tabular (via largeseqs.pm).  Now also
+   featuring record extraction from quality files in fasta format.
+
+
+COMMAND-LINE OPTIONS:
+
+  -c, --column <col_num[, ..., [colnum]]>        
+  -I, --column-FILTER <col_num[, ..., [colnum]]> 
+  -D, --column-DATA <col_num[, ..., [colnum]]>   
+    First <col_num> it is assumed to be a sequence ID.
+
+  -S, --slurp-mode
+    Read all fields from each ids.file lines and set
+    as gene IDs.
+
+  -X, --expand-filenames
+    Take a pattern such as "file[N].ext:range" and
+    produce a set of files in which "[N]" has been replaced
+    by all the elements of the range.
+
+  -N, --negate-filter
+    Select those sequences/records that are not in the
+    ids.file (so that, the program returns the complement matches).
+
+  -j, --join
+  -J, --full-join
+
+  -p, --add-prefix
+  -s, --add-suffix
+
+  -a, --forcebase        
+  -f, --forcebase-FILTER 
+  -d, --forcebase-DATA   
+      "forcebase" defines unique IDs, input IDs in the form
+      "ID_00000.00.xxx" are converted to "ID_00000".
+      By default, trimming on the last suffix after a dot,
+      so a generic ID is produced, from "ID_00000.00.xxx"
+      we got "ID_00000.00".
+  -A, --as-is-ids
+      Leave IDs "as is", do not change the IDs,
+      "ID_00000.00.xxx" is kept as "ID_00000.00.xxx".
+
+  -F, --fasta-file
+  -T, --tabular-file
+  -Q, --quality-file
+      
++++EOH+++
+#
+my (%GN,$N,$K,$k,$column_FILTER,@cF,$column_DATA,@cD,
+    $join,$idfile,$flfile,@ifiles,$std_flg,$negflg,$slurp,$expand,
+    @F,$id,$force_baseFILTER,$force_baseDATA,$asisflg,
+    $fa_flg,$qual_flg,$tbl_flg,$prefix,$suffix);
+#
+%GN = (); $N = $K = $k = 0;
+($join,$force_baseFILTER,$force_baseDATA,$asisflg,$slurp,$expand,
+    $fa_flg,$qual_flg,$tbl_flg,$negflg,$column_FILTER,$column_DATA) = (0) x 12;
+($prefix,$suffix) = ('','');
+#
+# ARGVS
+&add_cmdline_opts('c|column=s'         => sub {
+                                           $column_FILTER = 
+                                             $column_DATA = $_[1];
+                                          },
+                  'I|column-FILTER=s'  => \$column_FILTER,
+                  'D|column-DATA=s'    => \$column_DATA,
+                  'S|slurp-mode'       => \$slurp,
+                  'X|expand-filenames' => \$expand,
+                  'N|negate-filter'    => \$negflg,
+                  'j|join'             => sub { $join = 1 },
+                  'J|full-join'        => sub { $join = 2 },
+                  'a|forcebase'        => sub {
+                                            $force_baseFILTER = 
+                                              $force_baseDATA = 1;
+                                          },
+                  'f|forcebase-FILTER' => \$force_baseFILTER,
+                  'd|forcebase-DATA'   => \$force_baseDATA,
+		  'A|as-is-ids'        => \$asisflg,
+                  'p|add-prefix=s'     => \$prefix,
+                  's|add-suffix=s'     => \$suffix,
+                  'F|fasta-file'       => \$fa_flg,
+                  'T|tabular-file'     => \$tbl_flg,
+                  'Q|quality-file'     => \$qual_flg );
+&parse_cmdline();
+@cF = split /,/o, $column_FILTER; $column_FILTER = $cF[0];
+@cD = split /,/o, $column_DATA;   $column_DATA   = $cD[0];
+#
+$idfile = shift @ARGV;
+scalar(@ARGV) > 0 || push @ARGV, '-';
+if ($expand) {
+    @ifiles = ();
+    foreach my $f (@ARGV) {
+	my ($fn,$o,$e) = split /\:|\.\./o, $f;
+	if (defined($o)) {
+	    for (my $r = $o; $r <= $e; $r++) {
+		my $k;
+		($k = $fn) =~ s/\[N\]/sprintf("%03d",$r)/e;
+		push @ifiles, $k;
+	    };
+	} else {
+	    push @ifiles, $f;
+	};
+    };
+} else {
+    @ifiles = @ARGV;
+};
+$flfile = \@ifiles;
+#
+# MAIN
+#
+&program_started($PROG);
+#
+&rpt("##\n## INPUT FILES:\n\t".join("\n\t", @ifiles)."\n##\n");
+if ($slurp) {
+    &slurp_ids_to_filter($idfile);
+} else {
+    &read_ids_to_filter($idfile);
+};
+&rpt("## SETTING FILTER: $N IDs read / ".
+     scalar(keys %GN)." UNIQUE_IDs read\n## ---> ".
+     (join("\n## ---> ", keys %GN))."\n");
+#
+if ($fa_flg) {
+    &filter_fasta_file($flfile);
+} elsif ($tbl_flg) {
+    &filter_table_file($flfile);
+} elsif ($qual_flg) {
+    &filter_qual_file($flfile);
+} else {
+    &filter_raw_file($flfile);
+};
+&rpt("## OUTPUT: $K records filtered out of $k...\n");    
+#
+&program_finished($PROG);
+&EXIT('OK');
+#
+# SUBS
+sub read_ids_to_filter() {
+    my $fl = shift;
+    &report('HEADER',"LOADING IDs TO SET UP FILTER");
+    (*I, $std_flg) = &getIFH($fl);
+    $_cntN = 100;
+    $c = "."; $n = 0;
+    while (<I>) {
+        next if /^\s*$/o;
+        next if /^\#/o;
+        chomp;
+	$_ =~ s/^\s+//o;
+	$_ =~ s/\s+$//o;
+        @F = split /\s+/o, $_;
+        $id = $F[$column_FILTER];
+	if (!$asisflg) {
+	    if ($force_baseFILTER) {
+		$id =~ s/\.\d+(\..*)?$//o; # unique ID... ID_00000
+	    } else {
+		$id =~ s/(\.\d+)(\..*)?$/$1/o; # generic ID... ID_00000.00
+	    };
+	};
+	$id = $prefix.$id.$suffix;
+        for (my $h = 1; $h < scalar(@cF); $h++) {
+            $id .= "::".$F[$cF[$h]];
+        };
+        if ($join > 0) {
+            defined($GN{$id}) || (@{ $GN{$id} } = ());
+            push @{ $GN{$id} }, (($join == 2) ? "$_" : $F[$column_FILTER]);
+        } else {
+            defined($GN{$id}) || ($GN{$id} = 0);
+            $GN{$id}++;
+        };
+        $N++;
+    } continue {
+        &counter(++$n,$c);
+    }; # while
+    &counter_end($n);
+    close(I) unless $std_flg == 2;
+} # read_ids_to_filter
+sub slurp_ids_to_filter() {
+    my $fl = shift;
+    &report('HEADER',"LOADING IDs TO SET UP FILTER (SLURP MODE)");
+    (*I, $std_flg) = &getIFH($fl);
+    $_cntN = 100;
+    $c = "."; $n = 0;
+    while (<I>) {
+        next if /^\s*$/o;
+        next if /^\#/o;
+        chomp;
+	$_ =~ s/^\s+//o;
+	$_ =~ s/\s+$//o;
+        @F = split /\s+/o, $_;
+        foreach $id (@F) {
+	    # $id = $F[$column_FILTER];
+	    if (!$asisflg) {
+		if ($force_baseFILTER) {
+		    $id =~ s/\.\d+(\..*)?$//o; # unique ID... ID_00000
+		} else {
+		    $id =~ s/(\.\d+)(\..*)?$/$1/o; # generic ID... ID_00000.00
+		};
+	    };
+	    $id = $prefix.$id.$suffix;
+	    # for (my $h = 1; $h < scalar(@cF); $h++) {
+	    # 	$id .= "::".$F[$cF[$h]];
+	    # };
+	    if ($join > 0) {
+		defined($GN{$id}) || (@{ $GN{$id} } = ());
+		push @{ $GN{$id} }, (($join == 2) ? "$_" : $F[$column_FILTER]);
+	    } else {
+		defined($GN{$id}) || ($GN{$id} = 0);
+		$GN{$id}++;
+	    };
+	    $N++;
+	}; # foreach $id
+    } continue {
+        &counter(++$n,$c);
+    }; # while
+    &counter_end($n);
+    close(I) unless $std_flg == 2;
+} # slurp_ids_to_filter
+sub filter_raw_file() {
+    my $flary = shift;
+    &report('HEADER',"FILTERING IDS FROM RAW FILES");
+    foreach my $fl (@$flary) {
+        &rpt("# INPUT FILE: $fl\n");
+        (*D, $std_flg) = &getIFH($fl);
+        $n = 0;
+        while (<D>) {
+            next if /^\s*$/o;
+            next if /^\#/o;
+            chomp;
+            @F = split /\s+/o, $_;
+            $k++;
+            $id = $F[$column_DATA];
+	    if (!$asisflg) {
+		if ($force_baseDATA) {
+		    $id =~ s/\.\d+(\..*)?$//o; # unique ID... ID_00000
+		} else {
+		    $id =~ s/(\.\d+)(\..*)?$/$1/o; # generic ID... ID_00000.00
+		};
+	    };
+            for (my $h = 1; $h < scalar(@cD); $h++) {
+                $id .= "::".$F[$cD[$h]];
+            };
+	    my $e = exists($GN{$id}) ? 1 : 0;
+            (($e && !$negflg) || (!$e && $negflg)) && do {
+                if ($join > 0) {
+                    print STDOUT "$_ @{ $GN{$id} }\n"; # gene ID
+                } else {
+                    print STDOUT "$_\n"; # gene ID
+                };
+                $K++;
+                $c = "X"; 
+                next;
+            };
+            $c = ".";
+        } continue {
+            &counter(++$n,$c);
+        }; # while
+        &counter_end($n);
+        close(D) unless $std_flg == 2;
+    }; # foreach $fl
+} # filter_raw_file
+sub filter_fasta_file() {
+    my $flary = shift;
+    my ($seqid,$desc,$seq,$seqlen);
+    &report('HEADER',"FILTERING IDS FROM FASTA SEQUENCES");
+    foreach my $fl (@$flary){
+        &rpt("# INPUT FILE: $fl\n");
+        (*D, $std_flg) = &getIFH($fl);
+        set_perlfh(*D, 0, $std_flg); # 0~input_file :: 1~output_file
+        set_perlfh(*STDOUT, 1); # 0~input_file :: 1~output_file
+        $n = 0;
+        while (get_large_fasta_seqs($seqid,$desc,$seq,$seqlen)) {
+            $k++;
+            $id = $seqid;
+	    if (!$asisflg) {
+		if ($force_baseDATA) {
+		    $id =~ s/\.\d+(\..*)?$//o; # unique ID... ID_00000
+		} else {
+		    $id =~ s/(\.\d+)(\..*)?$/$1/o; # generic ID... ID_00000.00
+		};
+	    };
+	    my $e = exists($GN{$id}) ? 1 : 0;
+            (($e && !$negflg) || (!$e && $negflg)) && do {
+                ($desc ne 'undef') && ($seqid = "$seqid $desc");
+                save_fasta($seqid,$seq);
+                $K++;
+                $c = "X"; 
+                next;
+            };
+            $c = ".";
+        } continue {
+            &counter(++$n,$c);
+        }; # while
+        &counter_end($n);
+        close(D) unless $std_flg == 2;
+    }; # foreach $fl
+} # filter_fasta_file
+sub filter_qual_file() {
+    my $flary = shift;
+    my ($seqid,$desc,@scores,$seqlen);
+    &report('HEADER',"FILTERING IDS FROM QUALITY FILE (FASTA)");
+    foreach my $fl (@$flary){
+        &rpt("# INPUT FILE: $fl\n");
+        (*D, $std_flg) = &getIFH($fl);
+        set_perlfh(*D, 0, $std_flg); # 0~input_file :: 1~output_file
+        set_perlfh(*STDOUT, 1); # 0~input_file :: 1~output_file
+        $n = 0;
+        while (get_large_qual_sets($seqid,$desc,\@scores,$seqlen)) {
+            $k++;
+            $id = $seqid;
+	    if (!$asisflg) {
+		if ($force_baseDATA) {
+		    $id =~ s/\.\d+(\..*)?$//o; # unique ID... ID_00000
+		} else {
+		    $id =~ s/(\.\d+)(\..*)?$/$1/o; # generic ID... ID_00000.00
+		};
+	    };
+	    my $e = exists($GN{$id}) ? 1 : 0;
+            (($e && !$negflg) || (!$e && $negflg)) && do {
+                ($desc eq 'undef') && ($desc = "");
+                save_qual($seqid,\@scores,$desc);
+                $K++;
+                $c = "X"; 
+                next;
+            };
+            $c = ".";
+        } continue {
+            &counter(++$n,$c);
+        }; # while
+        &counter_end($n);
+        close(D) unless $std_flg == 2;
+    }; # foreach $fl
+} # filter_fasta_file
+sub filter_table_file() {
+    my $flary = shift;
+    my ($seqid,$desc,$seq,$seqlen);
+    &report('HEADER',"FILTERING IDS FROM TABULAR SEQUENCES");
+    foreach my $fl (@$flary){
+        &rpt("# INPUT FILE: $fl\n");
+        (*D, $std_flg) = &getIFH($fl);
+        set_perlfh(*D, 0, $std_flg); # 0~input_file :: 1~output_file
+        set_perlfh(*STDOUT, 1); # 0~input_file :: 1~output_file
+        $n = 0;
+        while (get_large_tbl_seqs($seqid,$desc,$seq,$seqlen)) {
+            $k++;
+            $id = $seqid;
+	    if (!$asisflg) {
+		if ($force_baseDATA) {
+		    $id =~ s/\.\d+(\..*)?$//o; # unique ID... ID_00000
+		} else {
+		    $id =~ s/(\.\d+)(\..*)?$/$1/o; # generic ID... ID_00000.00
+		};
+	    };
+	    my $e = exists($GN{$id}) ? 1 : 0;
+            (($e && !$negflg) || (!$e && $negflg)) && do {
+                ($desc eq 'undef') && ($desc = '');
+                save_tbl($seqid,$seq,$desc);
+                $K++;
+                $c = "X"; 
+                next;
+            };
+            $c = ".";
+        } continue {
+            &counter(++$n,$c);
+        }; # while
+        &counter_end($n);
+        close(D) unless $std_flg == 2;
+    }; # foreach $fl
+} # filter_table_file

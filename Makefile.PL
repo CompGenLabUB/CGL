@@ -11,7 +11,7 @@ WriteMakefile(
     LICENSE          => 'artistic_2',
     PL_FILES         => {},
     MIN_PERL_VERSION => '5.006',
-    EXE_FILES        => ['blastshorttbl', 'tbl2fa', 'fa2tbl', 'grepID'],
+    EXE_FILES        => ['bin/coverage_blastshorttbl', 'bin/tbl2fa', 'bin/fa2tbl', 'bin/grepID'],
     CONFIGURE_REQUIRES => {
         'ExtUtils::MakeMaker' => '0',
     },
