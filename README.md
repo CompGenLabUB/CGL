@@ -19,6 +19,8 @@ Includes:
 
 * tbl2fa
 
+* tblshuffle
+
 * coverage_blastshorttbl
 
 * ccdna2orfs
