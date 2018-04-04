@@ -1,0 +1,140 @@
+#!/usr/bin/perl
+#
+# tblshuffle
+#
+#   Converting a sequence input stream in tabular format to shuffled tabular
+#
+# ####################################################################
+#
+#        Copyright (C) 2003 - Josep Francesc ABRIL FERRANDO
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+# ####################################################################
+#
+# $Id: perlscripts.nw,v 1.7 2003/09/04 14:36:18 lopep Exp lopep $
+#
+# USAGE:
+#   tblshuffle < prot_seq.tbl > prot_seq.shuffled.tbl
+#
+use strict;
+use warnings;
+BEGIN{
+    use CGL::Global qw( :Benchmark :ExecReport :CommandLine :GetFH :Exit );
+    &init_timer(\@exectime);
+}
+#
+use CGL::Largeseqs qw( :PERLiofh :MULTItbl :SAVEtbl );
+#
+# VARS
+$PROG = 'tblshuffle
+$VERSION = '1alpha';
+$USAGE =<<'+++EOH+++';
+USAGE:
+
+  tblshuffle [ options ] < prot_seq.tbl > prot_seq_shuffled.tbl
+
+
+DESCRIPTION:
+
+  Converting a sequence input stream in tabular format to another
+  tabular file with all sequences shuffled.
+  It is quite fast as it uses C functions from largeseqs.pm (via
+  Inline perl module).
+
+
+COMMAND-LINE OPTIONS:
+
+  -Z, --gzip-output
+    Compress output on the fly and send to stdout.
+
++++EOH+++
+#
+my $gzip = 0;
+#
+# ARGVS
+&add_cmdline_opts('Z|gzip-output' => \$gzip);
+&parse_cmdline();
+my $ifile = (shift @ARGV) || '-';
+#
+# MAIN
+set_verbose($_verbose{RAW}, 50, 0, $_verbose{DEBUG});
+           # verbose ON/OFF
+           # (here we are parsing sequences char by char, not by lines)
+           # 50 chars x dot ~ 1line x dot, 50 lines x report_line
+           #   50 lines x report_line * 50bp x line = 2500aa
+           # 0 -> use default value
+           # debug ON/OFF
+&program_started($PROG);
+&parse_input_seqs($ifile,$gzip);
+&program_finished($PROG);
+&EXIT('OK');
+#
+# SUBS
+sub parse_input_seqs() {
+    my ($file,$gzip,$seqid,$desc,$seq,$seqlen,$pn,
+        $ofl,$IFH,$sin_flg,$OFH,$sout_flg,$pre,$pst);
+    # $file = shift || '-';
+    ($file,$gzip) = @_;
+    ($IFH, $sin_flg) = &getIFH($file);
+    set_perlfh($IFH, 0, $sin_flg); # 0~input_file :: 1~output_file
+    $ofl = $gzip ? '| gzip '.($_verbose{RAW} ? '-v ' : '').'--best -' : '-';
+    ($OFH, $sout_flg) = &getOFH($ofl);
+    set_perlfh($OFH, 1, $sout_flg); # 0~input_file :: 1~output_file
+    # $ifh = open_input_file($file);
+    # $ofh = open_output_file('-');
+    $pn = 0;
+    # print STDERR "##\n" if $_verbose{RAW};
+    while (get_large_tbl_seqs($seqid,$desc,$seq,$seqlen)) {
+        print STDERR "#-> $seqid [$seqlen bp|aa]\n" if $_verbose{RAW};
+        ($desc eq 'undef') && ($desc = '');
+	$seq =~ s/^(-*)//o && ($pre = defined($1) && $1 ne "" ? $1 : '');
+	$seq =~ s/(-*)$//o && ($pst = defined($1) && $1 ne "" ? $1 : '');
+	&shuffle_seq(\$seq);
+        save_tbl($seqid,$pre.$seq.$pst,$desc);
+        # print STDERR "##\n" if $_verbose{RAW};
+        $pn++;
+    }; # while <FAF>
+    close($IFH) unless $sin_flg  == 2;
+    close($OFH) unless $sout_flg == 2;
+    # close_file($ifh,0); # 0~input_file :: 1~output_file
+    # close_file($ofh,1);
+    # just to ensure that memory is cleaned (also buffers and/or swap)
+    undef $seqid; undef $desc; undef $seq; undef $seqlen;
+    print STDERR "###\n### $pn sequences converted to fasta format...\n"
+        if $_verbose{RAW};
+} # parse_input_seqs
+
+sub shuffle_seq($) {
+    ## A standard Fisher-Yates shuffle for strings
+
+    my $seq = shift;
+
+    srand(time);
+
+    my $i = length($$seq);
+
+    while (--$i > 0) {
+
+	my $j = int rand ($i + 1);
+
+	next if $i == $j;
+
+	(substr($$seq,$i,1),substr($$seq,$j,1)) =
+	    (substr($$seq,$j,1),substr($$seq,$i,1));
+
+    };
+
+} # shuffle_seq
