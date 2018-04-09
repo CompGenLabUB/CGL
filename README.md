@@ -51,7 +51,7 @@ Converting a sequence input stream in tabular format to shuffled tabular.
 ```
 
 
-# INSTALLATION
+# Installation
 
 To install this module, run the following commands:
 
@@ -62,7 +62,7 @@ To install this module, run the following commands:
 	make install
 ```
 
-# LICENSE AND COPYRIGHT
+# License and copyright
 
 Copyright (C) 2018 JF Abril
 
