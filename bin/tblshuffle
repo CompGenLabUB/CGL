@@ -39,7 +39,7 @@ BEGIN{
 use CGL::Largeseqs qw( :PERLiofh :MULTItbl :SAVEtbl );
 #
 # VARS
-$PROG = 'tblshuffle
+$PROG = 'tblshuffle';
 $VERSION = '1alpha';
 $USAGE =<<'+++EOH+++';
 USAGE:
