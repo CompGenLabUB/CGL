@@ -13,15 +13,42 @@ Includes:
 
 ### Scripts
 
-* grepID
+**grepID** 
 
-* fa2tbl
+```
+Using a gene list to filter records from another file in FASTA or tabular format.
+```
 
-* tbl2fa
+**fa2tbl** 
 
-* coverage_blastshorttbl
+```
+Converting a sequence input stream in FASTA format to tabular.
+```
 
-* ccdna2orfs
+**tbl2fa**
+
+```
+Converting a sequence input stream in tabular format to FASTA.
+```
+
+**coverage_blastshorttbl**
+
+```
+Calculates the overall coverage for all queries and targets from BLAST output, 
+accounting for overlaps among HSPs within each single query and target sequence.
+```
+
+**cdna2orfs**
+
+```
+Translating cDNA sequences into open reading frames
+```
+
+**tblshuffle**
+
+```
+Converting a sequence input stream in tabular format to shuffled tabular.
+```
 
 
 # INSTALLATION
