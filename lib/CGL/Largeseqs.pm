@@ -5,8 +5,7 @@
 #
 # ####################################################################
 #
-#                  Copyright (C) 2003 - 2007
-#                Josep Francesc ABRIL FERRANDO
+#            Copyright (C) 2003 - Josep F ABRIL
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,7 +23,7 @@
 #
 # ####################################################################
 #
-# $Id: CGL::Largeseqs.pm,v 1.1 2006/12/11 20:42:49 lopep Exp lopep $
+# $Id$
 #
 package CGL::Largeseqs;
 use strict;
@@ -36,7 +35,7 @@ use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION
 	     );
 
 use Exporter;
-$VERSION = '1.00';
+$VERSION = substr('$Id$', 5, -2); # $VERSION = '1.00';
 @ISA = qw(Exporter);
 @EXPORT = qw(
            set_verbose LS_v LS_LNC LS_lnm LS_LNM

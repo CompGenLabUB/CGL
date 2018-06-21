@@ -6,7 +6,7 @@
 #
 # ####################################################################
 #
-#        Copyright (C) 2003 - Josep Francesc ABRIL FERRANDO
+#              Copyright (C) 2003 - Josep F ABRIL
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@
 #
 # ####################################################################
 #
-# $Id: perlscripts.nw,v 1.7 2003/09/04 14:36:18 lopep Exp lopep $
+# $Id$
 #
 # USAGE:
 #   tbl2fa.pl < prot_seq.tbl > prot_seq.fasta
@@ -40,7 +40,7 @@ use CGL::Largeseqs qw( :PERLiofh :MULTItbl :SAVEfasta );
 #
 # VARS
 $PROG = 'tbl2fa.pl';
-$VERSION = '1alpha';
+$VERSION = substr('$Id$', 5, -2);
 $USAGE =<<'+++EOH+++';
 USAGE:
 

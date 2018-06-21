@@ -50,6 +50,20 @@ Translating cDNA sequences into open reading frames
 Converting a sequence input stream in tabular format to shuffled tabular.
 ```
 
+**fa2fa**
+
+```
+Cleaning fasta sequences from non-standard symbols (like '*'), 
+also providing reverse, complement, and reverse-complement options.
+```
+
+**N50stats**
+
+```
+From a sequence file in fasta format, compute N50 assembly statistics
+for different sequence length ranges.
+```
+
 
 # Installation
 

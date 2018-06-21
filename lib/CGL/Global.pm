@@ -24,7 +24,7 @@
 #
 # ####################################################################
 #
-# $Id: CGL::Global.pm,v 1.1 2007/12/04 10:17:59 lopep Exp lopep $
+# $Id$
 #
 package CGL::Global;
 use strict;
@@ -39,7 +39,7 @@ use vars qw(
            );
 
 use Exporter;
-$VERSION = 1.00;
+$VERSION = substr('$Id$', 5, -2);
 @ISA = qw(Exporter);
 @EXPORT = qw(
            $PLVER $PROG $VERSION $USAGE $DATE $CDATE $USER $HOST
@@ -128,14 +128,24 @@ $CDATE = &get_date();
 if (defined($ENV{USER})) {
     $USER = $ENV{USER};
 } else {
-    $USER = "unknown"; # chomp($USER = system("whoami"));
+    if (open(H,"whoami |")) {
+        chomp($USER=<H>);
+        close(H);
+    } else {
+        $USER = "unknown";
+    };
 };
 if (defined($ENV{HOSTNAME})) {
     $HOST = $ENV{HOSTNAME};
 } elsif (defined($ENV{HOST})) {
     $HOST = $ENV{HOST};
 } else {
-    $HOST = "unknown"; # chomp($HOST = system("hostname"));
+    if (open(H,"hostname |")) {
+        chomp($HOST=<H>);
+        close(H);
+    } else {
+        $HOST = "unknown";
+    };
 };
 $HOST =~ s/\..+?\..+?$//o;
 if (defined($ENV{PSRF})) {
@@ -971,8 +981,11 @@ sub fill_right() { return $_[0].($_[2] x ($_[1] - length($_[0]))) }
 sub fill_left()  { return ($_[2] x ($_[1] - length($_[0]))).$_[0] }
 sub fill_mid()   { 
     my $l = length($_[0]);
-    my $k = int(($_[1] - $l)/2);
-    return ($_[2] x $k).$_[0].($_[2] x ($_[1] - ($l + $k)));
+    ($l < $_[1]) && do { # centering only when available space
+        my $k = int(($_[1] - $l)/2);
+        return ($_[2] x $k).$_[0].($_[2] x ($_[1] - ($l + $k)));
+    };
+    return $_[0];        # just return the string otherwise
 } # fill_mid
 sub prespc() { return ( map { " $_" } @_ ); } 
 sub rpt() { print $ERRFH @_ if $_verbose{RAW}; }

@@ -1,8 +1,8 @@
 #!/usr/bin/perl
 #
-# tblshuffle
+# fa2fa.pl
 #
-#   Converting a sequence input stream in tabular format to shuffled tabular
+#   Fixing fasta files.
 #
 # ####################################################################
 #
@@ -27,7 +27,7 @@
 # $Id$
 #
 # USAGE:
-#   tblshuffle < prot_seq.tbl > prot_seq.shuffled.tbl
+#   fa2fa.pl < prot_seq.tbl > prot_seq.fasta
 #
 use strict;
 use warnings;
@@ -36,37 +36,85 @@ BEGIN{
     &init_timer(\@exectime);
 }
 #
-use CGL::Largeseqs qw( :PERLiofh :MULTItbl :SAVEtbl );
+use CGL::Largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta :REVCOMPseq );
 #
 # VARS
-$PROG = 'tblshuffle';
+$PROG = 'fa2fa.pl';
 $VERSION = substr('$Id$', 5, -2);
 $USAGE =<<'+++EOH+++';
 USAGE:
 
-  tblshuffle [ options ] < prot_seq.tbl > prot_seq_shuffled.tbl
+  fa2fa.pl [ options ] < prot_seq.tbl > prot_seq.fasta
 
 
 DESCRIPTION:
 
-  Converting a sequence input stream in tabular format to another
-  tabular file with all sequences shuffled.
+  Fixing fasta files: standard sequence IDs, removing weird chars,
+  and so on.
   It is quite fast as it uses C functions from largeseqs.pm (via
   Inline perl module).
 
 
 COMMAND-LINE OPTIONS:
 
+  -R, --reverse-seq
+    Returns the reverse sequence of each input sequence.
+
+  -C, --complement-seq
+    Returns the complement sequence for each input sequence.
+
+  -RC, --reverse-complement
+    Returning the reverse-complement for all the input seqs.
+
   -Z, --gzip-output
     Compress output on the fly and send to stdout.
 
+  -p, --fix-id-prefix <regexp>
+  -s, --fix-id-suffix <regexp>
+     Fixing IDs by removing a prefix or a suffix from the ID string.
+     <regexp> sets a regular expression which defines what has to be
+     removed from input sequence IDs. 
+
 +++EOH+++
 #
-my $gzip = 0;
+my $funct;
+my ($gzip,$revf,$compf,$do_funct) = (0,0,0,1);
+my ($filterID, $prefix, $suffix) = (undef) x 3;
 #
 # ARGVS
-&add_cmdline_opts('Z|gzip-output' => \$gzip);
+&add_cmdline_opts('R|reverse-seq'      => \$revf ,
+                  'C|complement-seq'   => \$compf ,
+                  'reverse-complement' => sub { $compf = $revf = 1; } ,
+                  'p|fix-id-prefix=s'  => \$prefix ,
+                  's|fix-id-suffix=s'  => \$suffix ,
+                  'Z|gzip-output'      => \$gzip   );
 &parse_cmdline();
+#
+my $msg = 'FASTA -> FASTA';
+if ($compf + $revf == 2) { # $revf == 1 && $compf == 1
+    $msg = 'FASTA -> reverse-complement(FASTA)';
+    $funct = \&do_revcom;
+} elsif ($revf > $compf) { # $revf == 1 && $compf == 0
+    $msg = 'FASTA -> reverse(FASTA)';
+    $funct = \&do_rev;
+} elsif ($compf > $revf) { # $revf == 0 && $compf == 1
+    $msg = 'FASTA -> complement(FASTA)';
+    $funct = \&do_com;
+} else {                   # $revf == 0 && $compf == 0
+    $do_funct = 0;
+};
+#
+$filterID =
+   (defined($prefix) && defined($suffix))
+     ? sub { my $ref = shift; $$ref =~ s/^$prefix//o; $$ref =~ s/$suffix$//o; }
+     : (defined($prefix)
+         ? sub { my $ref = shift; $$ref =~ s/^$prefix//o; }
+         : (defined($suffix)
+             ? sub { my $ref = shift; $$ref =~ s/$suffix$//o; }
+             : sub { }
+            )
+        );
+#
 my $ifile = (shift @ARGV) || '-';
 #
 # MAIN
@@ -78,6 +126,8 @@ set_verbose($_verbose{RAW}, 50, 0, $_verbose{DEBUG});
            # 0 -> use default value
            # debug ON/OFF
 &program_started($PROG);
+print STDERR "## $msg : Proceed ".($do_funct ? "YES" : "NO")."\n"
+    if $_verbose{RAW};;
 &parse_input_seqs($ifile,$gzip);
 &program_finished($PROG);
 &EXIT('OK');
@@ -85,7 +135,7 @@ set_verbose($_verbose{RAW}, 50, 0, $_verbose{DEBUG});
 # SUBS
 sub parse_input_seqs() {
     my ($file,$gzip,$seqid,$desc,$seq,$seqlen,$pn,
-        $ofl,$IFH,$sin_flg,$OFH,$sout_flg,$pre,$pst);
+        $ofl,$IFH,$sin_flg,$OFH,$sout_flg);
     # $file = shift || '-';
     ($file,$gzip) = @_;
     ($IFH, $sin_flg) = &getIFH($file);
@@ -97,13 +147,12 @@ sub parse_input_seqs() {
     # $ofh = open_output_file('-');
     $pn = 0;
     # print STDERR "##\n" if $_verbose{RAW};
-    while (get_large_tbl_seqs($seqid,$desc,$seq,$seqlen)) {
+    while (get_large_fasta_seqs($seqid,$desc,$seq,$seqlen)) {
         print STDERR "#-> $seqid [$seqlen bp|aa]\n" if $_verbose{RAW};
-        ($desc eq 'undef') && ($desc = '');
-	$seq =~ s/^(-*)//o && ($pre = defined($1) && $1 ne "" ? $1 : '');
-	$seq =~ s/(-*)$//o && ($pst = defined($1) && $1 ne "" ? $1 : '');
-	&shuffle_seq(\$seq);
-        save_tbl($seqid,$pre.$seq.$pst,$desc);
+        # TO BE IMPLEMENTED: check sequence once it is loaded into mem
+        $filterID->(\$seqid);
+	$funct->(\$seq,$seqlen) if $do_funct;
+        save_fasta($seqid." ".$desc,$seq);
         # print STDERR "##\n" if $_verbose{RAW};
         $pn++;
     }; # while <FAF>
@@ -116,25 +165,15 @@ sub parse_input_seqs() {
     print STDERR "###\n### $pn sequences converted to fasta format...\n"
         if $_verbose{RAW};
 } # parse_input_seqs
-
-sub shuffle_seq($) {
-    ## A standard Fisher-Yates shuffle for strings
-
-    my $seq = shift;
-
-    srand(time);
-
-    my $i = length($$seq);
-
-    while (--$i > 0) {
-
-	my $j = int rand ($i + 1);
-
-	next if $i == $j;
-
-	(substr($$seq,$i,1),substr($$seq,$j,1)) =
-	    (substr($$seq,$j,1),substr($$seq,$i,1));
-
-    };
-
-} # shuffle_seq
+sub do_revcom() {
+    my ($sqref,$sql) = @_;
+    reversecompl($sqref,$sql);
+} # do_revcom
+sub do_rev() {
+    my ($sqref,$sql) = @_;
+    reverse_seq($sqref,$sql);
+} # do_rev
+sub do_com() {
+    my ($sqref,$sql) = @_;
+    complement_dnaseq($sqref,$sql);
+} # do_com

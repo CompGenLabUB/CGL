@@ -7,7 +7,7 @@
 #
 # ####################################################################
 #
-#        Copyright (C) 2003 - Josep Francesc ABRIL FERRANDO
+#              Copyright (C) 2003 - Josep F ABRIL
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 #
 # ####################################################################
 #
-# $Id: perlscripts.nw,v 1.7 2003/09/04 14:36:18 lopep Exp lopep $
+# $Id$
 #
 # USAGE:
 #   grepID.pl [options] ids.file genes.file > filtered_genes.file
@@ -41,7 +41,7 @@ use CGL::Largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta
 #
 # VARS
 $PROG = 'grepID.pl';
-$VERSION = '1.0alpha';
+$VERSION = substr('$Id$', 5, -2);
 $USAGE =<<'+++EOH+++';
 USAGE:
 

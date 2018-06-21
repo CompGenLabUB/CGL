@@ -1,0 +1,691 @@
+#!/usr/bin/perl
+#
+# N50stats.pl
+#
+#   From a sequence file in fasta format,
+#   compute N50 assembly statistics.
+#
+# ####################################################################
+#
+#              Copyright (C) 2015 - Josep F ABRIL
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+# ####################################################################
+#
+# $Id$
+#
+# USAGE:
+#   N50stats.pl [options] seqsfile.fasta
+#
+use strict;
+use warnings;
+use Data::Dumper;
+#
+use CGL::Global qw( :CommandLine :GetFH :ExecReport :ExecMessages :Exit );
+use CGL::Largeseqs qw( :PERLiofh :MULTIfasta :DNAsqcomp );
+#
+# VARS
+$PROG = 'N50stats.pl';
+$VERSION = substr('$Id$', 5, -2);
+$USAGE =<<'+++EOH+++';
+USAGE:
+
+  N50stats.pl [options] seqsfile.fasta
+
+
+DESCRIPTION:
+
+  From a sequence file in fasta format, compute N50 assembly statistics
+  for different sequence length ranges. This script extends previous
+  count_fasta.pl program developed by Joseph Fass at the Bioinformatics
+  Core at UC Davis Genome Center, modified from a script by Brad Sickler.
+  The point is to get further info from sequences length distribution,
+  as well as segmenting the N50 calculation by fixed length ranges,
+  ressembling the output produced by SOAPdenovo on the ScaffStats file.
+
+  When several fasta files are provided this program will calculate
+  all the assembly statistics as if they were coming from a single file.
+  This can be useful when the assembler produces separate files
+  for scaffolds, contigs, singletons and/or other, and we do not want
+  to keep another copy of the sequences in a merged file.
+
+
+COMMAND-LINE OPTIONS:
+
+  -G, --genome-length <int>
+    Estimated genome size, which is used to calculate NG50. It is
+    similar to N50 but corrected by expected genome size. It accepts
+    SI units: 'k' for kilo bases, 'M' for mega bases, and 'G' for
+    giga bases; for instance "10k" instead of "10000". Just notice
+    there is no space allowed between the number and the unit symbol.
+
+  -B, --bin-size <int>
+    Bin size for the lengths histogram printed to STDERR when
+    computing the N50 stats. By default it uses 1000bp, but any
+    positive integer value can be provided. If bin size is set
+    to zero, the histogram is not calculated then. It also accepts
+    SI units as the previous seitch.
+
+  -S, --scaffold-label
+  -C, --contig-label
+    First one sets the labels of the different output items to include
+    "Scaffold", while the second sets it to "Contig". By default, the
+    label is simply set to "Sequence". In case both are simultaneously
+    provided, none of those command-line switches will be considered
+    by the program (setting it back to "Sequence").
+
+  -T, --title <string>
+    If defined, write a header showing this title.
+
+  -M, --save-histogram <output_file>
+    Filename where to save the histogram, otherwise by default
+    it will be sent to the STDERR channel. If bin size is set
+    to zero, see corresponding switch info, this file will not
+    be created either.
+
+  -L, --save-length-vectors <vectors_file>
+    Provide a filename where length vectors will be stored for later
+    analyses and visualization (using R for instance). Output file
+    has two columns, one with the factor, the second with a length,
+    repeated as many times as lengths were defined for the factor.
+    The program will generate a file having as many rows as two times
+    the number of input sequences.
+
++++EOH+++
+#
+# VARS
+my @NUClbls = qw( A T G C N O L );
+            # dna_sequence_composition returns #A, #T, #G, #C, #N, #?->other, #lc
+my @SEQlengths = ();
+my %VARS = ( 'aux_LBLS' => [ qw( >100 >200 >500 >1k   >10k   >100k   >1M ) ],
+             'aux_LIMS' => [      100, 200, 500, 1000, 10000, 100000, 1000000 ] );
+
+my $CSTR = ("\b" x 9).'%09d';
+my $RPTC = 1000;
+
+#
+# ARGVS
+scalar(@ARGV) > 0 || do {
+    &warn('SHOW_HELP', "\nPROGRAM:   $PROG - version $VERSION\n\n".
+	  $USAGE." ");
+    &EXIT('HELP');
+};
+
+my ($scflbl_flg, $ctglbl_flg, $seqlabel,
+    $title, $genomelength, $binsize, $histogramfile, $vectorsfile
+    ) = (0, 0, 'Sequences', undef, undef, undef, undef, undef);
+#
+&add_cmdline_opts('S|scaffold-label'        => \$scflbl_flg,
+                  'C|contig-label'          => \$ctglbl_flg,
+                  'T|title=s'               => \$title,
+                  'G|genome-length=s'       => \$genomelength,
+                  'B|bin-size=s'            => \$binsize,
+                  'M|save-histogram=s'      => \$histogramfile,
+                  'L|save-length-vectors=s' => \$vectorsfile);
+&parse_cmdline();
+#
+my @file = @ARGV; # this can be useful if there are several sequence files for the assembly (like contigs and singletons)
+#
+$seqlabel = 'Scaffold' if $scflbl_flg;
+$seqlabel = 'Contig'   if $ctglbl_flg;
+$seqlabel = 'Sequence' if $scflbl_flg && $ctglbl_flg;
+
+if (defined($title)) {
+    my $l = length($title) + 12;
+    $title = '#' x $l . "\n". '###   ' . $title . '   ###' . "\n". '#' x $l . "\n";
+} else {
+    $title = q{};
+};
+
+defined($genomelength) && &check_units(\$genomelength, 'genome-length');
+$VARS{'EXPECTED_GENOME_LENGTH'} = $genomelength;
+defined($binsize) && &check_units(\$binsize, 'bin-size');
+$binsize = 1000 unless (defined($binsize) && $binsize >= 0);
+
+#
+# MAIN
+#
+set_verbose($_verbose{DEBUG}, 100, 0, $_verbose{DEBUG});
+&program_started($PROG);
+#
+&get_seqs_content(\@file, \%VARS, \@SEQlengths);
+&compute_N50(\%VARS, \@SEQlengths, $title, $binsize, $histogramfile, $vectorsfile);
+&print_report(\%VARS, $seqlabel, $title);
+#
+&program_finished($PROG);
+&EXIT('OK');
+#
+# SUBS
+sub check_units($) {
+    my ($bp, $lbl, %U, $num, $unit);
+    ($bp, $lbl) = @_;
+    %U = qw( K 000 M 000000 G 000000000 );
+    $$bp =~ /^(\d+)(\D*)$/ && ($num  = defined($1) ? $1 : 0,
+			       $unit = (defined($2) && exists($U{uc($2)})) ? $U{uc($2)} : q{});
+    $num == 0 && # number perhaps is not an integer followed by a unit ?
+	die("###\n### ERROR ### Argument of $lbl must be an integer (optionally followed by k, M, or G): >>$$bp<< ...\n###\n");
+    $$bp = ($num . $unit) + 0; # force to return a numeric value
+} # check_units
+
+sub get_seqs_content($$$) {
+    my ($aryfile, $vars, $sqlens,
+	$Nseqs, $Tlen, $tlen, $clen, $minlen, $maxlen);
+    ($aryfile, $vars, $sqlens) = @_;
+
+    &report('HEADER',"READING SEQUENCES from FASTA FILE" . (scalar @$aryfile > 1 ? "S" : q{}));
+
+    # those are absolute totals: must be initialized before opening any input file
+    $Tlen = $tlen = $Nseqs = 0;
+    $minlen = undef;
+
+    foreach my $ifile (@$aryfile) {
+	my ($nseqs, $ttlen, $z,
+	    $IFH, $sin_flg, $seqid, $desc, $seq, $seqlen);
+
+	print STDERR "#\n# Opening fasta file: $ifile\n" if $_verbose{'RAW'};	
+	($IFH, $sin_flg) = &getIFH($ifile);
+	set_perlfh($IFH, 0, $sin_flg); # 0~input_file :: 1~output_file
+
+	print STDERR "#--> Processing... 000000000" if $_verbose{'RAW'};
+	$nseqs = $ttlen = $z = 0;
+	while (get_large_fasta_seqs($seqid,$desc,$seq,$seqlen)) {
+	    my ($A,$T,$G,$C,$N,$O,$L) = dna_sequence_composition($seq,$seqlen);
+	                              #A, #T, #G, #C, #N, #?/O and #lc/L
+	    $Tlen += $seqlen;
+	    $tlen += $seqlen - ($N + $O); $ttlen += $seqlen - ($N + $O);
+	    $Nseqs++;                     $nseqs++;
+	    defined($minlen) || ($minlen = $maxlen = $seqlen);
+	    $minlen = $seqlen if $minlen > $seqlen;
+	    $maxlen = $seqlen if $maxlen < $seqlen;
+	    $vars->{'NUC_A'} += $A;
+	    $vars->{'NUC_T'} += $T;
+	    $vars->{'NUC_G'} += $G;
+	    $vars->{'NUC_C'} += $C;
+	    $vars->{'NUC_N'} += $N;
+	    $vars->{'NUC_O'} += $O;
+	    $vars->{'NUC_L'} += $L;
+	    push @{ $sqlens }, $seqlen;
+	} continue {
+	    print STDERR sprintf($CSTR,$z) if $_verbose{'RAW'} && (++$z % $RPTC == 0);
+	}; # while fastaseqs
+	print STDERR sprintf($CSTR,$z) if $_verbose{'RAW'} && ($z % $RPTC != 0);
+	print STDERR " sequences read.\n#\n" if $_verbose{'RAW'};
+
+	close($IFH) unless $sin_flg == 2;
+
+	$nseqs == 0 && die("###\n### ERROR ### NO fasta sequences were found on file $ifile...\n###\n");
+	$ttlen == 0 && die("###\n### ERROR ### EMPTY FASTA sequences from file $ifile...\n###\n");
+    }; # foreach $ifile
+
+    # those are absolute totals: must be computed after closing all input files
+    $vars->{'TotalBP'}      = $Tlen;
+    $vars->{'TotalBP_noN'}  = $tlen;
+    $vars->{'TotalBP_noN_pct'} = $tlen / $Tlen * 100;
+    $vars->{'TotalSQ'}      = $Nseqs;
+    $vars->{'LongestSeq'}   = $maxlen;
+    $vars->{'ShortestSeq'}  = $minlen;
+    $vars->{'MeanLength'}   = $Tlen / $Nseqs;
+    # this median function also sorts the array of lengths from longer to shorter
+    $vars->{'MedianLength'} = &get_median_length($sqlens);
+    $vars->{'EXPECTED_GENOME_LENGTH'} = $Tlen unless defined($vars->{'EXPECTED_GENOME_LENGTH'});
+    $clen = $vars->{'NUC_G'} + $vars->{'NUC_C'};
+    $vars->{'GC_pct'}  = $clen / $tlen * 100; # [ACGT]
+    $vars->{'GCT_pct'} = $clen / $Tlen * 100; # [ACTGN]
+
+    foreach my $nuc (qw( A C G T N O L )) {
+	my $lbl = 'NUC_'.$nuc;
+	$vars->{$lbl.'_pct'} = $vars->{$lbl} / $Tlen * 100;
+    };
+
+} # get_seqs_content
+
+sub get_median_length($){ # ODD-MEDIAN
+    my ($ary, $n);
+    $ary = shift;
+    @$ary = sort { $b <=> $a } @$ary;
+         # must ensure that sort works "numerically" always
+         # here we are also reordering the sequence lengths array from longer to shorter
+         #      so that that vector is ready to use when calculating N50s values (descending ordered)
+    ($n = scalar(@$ary)) > 0 &&
+        return sprintf("%.3f", $ary->[($n - (0,0,1,0)[$n & 3]) / 2]);
+    return 'NA' ;    
+} # get_median_length
+
+sub compute_N50($$$$$) {
+    my ($vars, $sqlens, $title, $bin, $histfile, $vectfile) = @_;
+    my ($saveflg, $OFH, $ofh_flg, $SUM, $SUMBP);
+    $saveflg = 0;
+
+    &report('HEADER',"COMPUTING N50 VALUES");
+
+    $bin > 0 && do {
+	if (defined($histfile)) {
+	    print STDERR "# Length Frequency Histogram saved into $histfile...\n" if $_verbose{'RAW'};
+	    ($OFH, $ofh_flg) = &getOFH($histfile);
+	} else {
+	    print STDERR "# Length Frequency Histogram written to STDERR...\n" if $_verbose{'RAW'};
+	    $ofh_flg = 2;
+	    $OFH = \*STDERR;
+	}; # save histogram to stderr
+
+	print $OFH "$title#\n# Length Distribution\n#\n# Bin Size: $bin\n";
+	$vars->{'aux_BINS'} = {};
+	my ($maxbin, $maxval, $histsize, $histspcsize) = (0, 0, 50, 20);
+	$histspcsize = q{ } x $histspcsize;
+	foreach my $len (@$sqlens) {
+	    my $int = int($len/$bin);
+	    exists($vars->{'aux_BINS'}{$int}) || ($vars->{'aux_BINS'}{$int} = 0);
+	    $vars->{'aux_BINS'}{$int}++;
+	    $maxbin = $int if $maxbin < $int;
+	};
+	for (my $i = 0; $i <= $maxbin; $i++) {
+	    my $j = exists($vars->{'aux_BINS'}{$i}) ? $vars->{'aux_BINS'}{$i} : 0;
+	    $maxval += $j; # $maxval = $j if $maxval < $j; 
+	};
+	#	                  **      #12345678901234567890123456789012345678901234567890
+	my $ruler = '#' . (q{ } x 40) . '0%|'. $histspcsize .  '50%|' . $histspcsize . '100%|' . "\n";
+	print $OFH "# Max Count: $maxval ['*' == 1/${histsize}th of this value]\n#\n". $ruler;
+	for (my $i = 0; $i < $maxbin + 2; $i++) {
+	    my $j = exists($vars->{'aux_BINS'}{$i}) ? $vars->{'aux_BINS'}{$i} : 0;
+	    my $v = int(($j/$maxval) * $histsize);
+	    # ** 40 from previous print is calculated from: 13 fixed + 10d + 10s + 10d = 43 - 2 (0%) - 1 (#) = 40
+	    printf $OFH "BIN %10d [<%10sbp]: %10d %s\n",
+	                 $i, ($i + 1) * $bin, $j, ($j == 0 ? '|' : ($v == 0 ? ':' : '*' x $v));
+	};
+	print $OFH $ruler;
+	delete($vars->{'aux_BINS'});
+
+	close($OFH) unless $ofh_flg == 2;
+    }; # if $bin > 0
+
+    defined($vectfile) && do {
+	($OFH, $ofh_flg) = &getOFH($vectfile);
+	$saveflg = 1;
+    };
+
+    # Get N50 stats
+    print STDERR "#\n# Computing N50 stats for ALL sequences...\n" if $_verbose{'RAW'};
+
+    $SUM   = $vars->{'SQ_ALL'}     = $vars->{'TotalSQ'};
+    $SUMBP = $vars->{'SQ_ALL_SUM'} = $vars->{'TotalBP'};
+    &get_Nstats($vars, 'ALL', $sqlens);
+
+    # Redo for the sequence subsets
+    # my @SEQSETS = map { uc($_) } @{ $vars->{'aux_LBLS'} };
+    my @SEQSETS = @{ $vars->{'aux_LBLS'} };
+    my @SEQVALS = @{ $vars->{'aux_LIMS'} };
+    my $setnum = scalar( @SEQVALS );
+
+    $saveflg && do {
+	foreach my $l (@SEQVALS) {
+	    printf $OFH "ALL %d\n", $l;
+	};
+    };
+
+    for (my $i = 0; $i < $setnum; $i++) {
+
+	my ($j,
+	    $minlen, $minlbl, $maxlen, $maxlbl, 
+	    @tmp, $sum, $numseqs);
+
+	$j = $i + 1;
+	($minlen,$minlbl) = ($SEQVALS[$i], $SEQSETS[$i]);
+	($maxlen,$maxlbl) = (defined($SEQVALS[$j]) ? $SEQVALS[$j] : $vars->{'LongestSeq'} + 100,
+			     defined($SEQSETS[$j]) ? $SEQSETS[$j] : '>'.$vars->{'LongestSeq'} );
+	print STDERR "# Computing N50 stats for sequences with lengths $minlbl...\n" if $_verbose{'RAW'};
+	@tmp = ();
+	$sum = 0;
+	foreach my $l (@$sqlens) {
+	    $l >= $maxlen && next;
+	    $l < $minlen && last;
+	    push @tmp, $l;
+	    $sum += $l;
+	};
+
+	$saveflg && do {
+	    foreach my $l (@tmp) {
+		printf $OFH "S%s %d\n", $minlbl, $l;
+	    };
+	};
+
+	$numseqs = scalar(@tmp);
+	$vars->{'SQ_'.$minlbl}        = $numseqs;
+	$vars->{'SQ_'.$minlbl.'_SUM'} = $sum;
+	$vars->{'SQ_'.$minlbl.'_pct'} = $numseqs / $vars->{'TotalSQ'} * 100;
+	$vars->{'SQ_'.$minlbl.'_SUM_pct'} = $sum / $vars->{'TotalBP'} * 100;
+	$SUM -= $numseqs;
+	$SUMBP -= $sum;
+
+	&get_Nstats($vars, $minlbl, \@tmp);
+
+    };
+    $vars->{'SQ_<100'}     = $SUM;
+    $vars->{'SQ_<100_SUM'} = $SUMBP;
+    $vars->{'SQ_<100_pct'}     = $vars->{'SQ_<100'} / $vars->{'TotalSQ'} * 100;
+    $vars->{'SQ_<100_SUM_pct'} = $vars->{'SQ_<100_SUM'} / $vars->{'TotalBP'} * 100;
+
+    $saveflg && do {
+	close($OFH) unless $ofh_flg == 2;
+    };
+
+    print STDERR "# N50 stats... DONE!!!\n" if $_verbose{'RAW'};
+
+} # compute_N50
+
+sub get_Nstats($$$) { # just remember that we assume that length array is already descending ordered...
+    my ($vars, $lbl, $ary, @Nvars, @Svars, @Sflags, $sum, $sqn, $sn, $mxseq, $mxlen, $pre, $preNG, $fNG, $glenNG);
+    ($vars, $lbl, $ary) = @_;
+
+    # N10to90
+    @Nvars = qw( 10 20 30 40 50 60 70 80 90 100 ); # adding 100 will do the trick later
+    @Svars = ();
+    $mxseq = $vars->{'SQ_'.$lbl};
+    $mxlen = $lbl eq 'ALL' ? $vars->{'TotalBP'} : $vars->{'SQ_'.$lbl.'_SUM'};
+    # NG50 N50-NG50
+    $preNG = 'NG50_'.$lbl;
+    $fNG   = 1;
+    $glenNG = defined($vars->{'EXPECTED_GENOME_LENGTH'}) ? $vars->{'EXPECTED_GENOME_LENGTH'} : $vars->{'TotalBP'};
+    $glenNG *= 0.5; # for the NG50
+    $vars->{$preNG.'_SQL'} = $vars->{$preNG.'_SQN'} = 'NA';
+
+    print STDERR "#--> Subset $lbl : $mxseq sequences with total sum lengths of ${mxlen}bp\n" if $_verbose{'RAW'};
+
+    foreach my $v (@Nvars) {
+	$pre = 'N'.$v.'_'.$lbl;
+	$vars->{$pre.'_SQL'} = $vars->{$pre.'_SQN'} = 0;
+	push @Svars, $mxlen * ($v / 100);
+    };
+
+    scalar(@$ary) > 1 && do {
+	$sn = scalar @Svars;
+	$Svars[$sn - 1]++; # a hack to add the last sequence or if there is only one sequence in the set
+	@Sflags = (1) x $sn;
+	print STDERR "#    |--> @Svars\n" if $_verbose{'DEBUG'};
+	
+	$sum = $sqn = 0;
+	foreach my $ln (@$ary) { # cumulative N50 stats !!!
+	    my ($vo,$fo,$so,$se);
+	    $sum += $ln;
+	    $sqn++;
+	    for (my $k = 0; $k < $sn - 1; $k++) {
+		($vo,$fo,$so,$se) = ($Nvars[$k], $Sflags[$k], $Svars[$k], $Svars[$k + 1]);
+		$pre = 'N'.$vo.'_'.$lbl;
+		$fo && $sum >= $so && $sum < $se && do {
+		    print STDERR "#    |--> $pre : $ln : $sum $sqn\n" if $_verbose{'DEBUG'};
+		    $vars->{$pre.'_SQL'} = $ln;
+		    $vars->{$pre.'_SQN'} = $sqn;
+		    $vars->{$pre.'_SQBP'} = $sum;
+		    # $vars->{$pre.'_SQBP_pct'} = $sum / $mxlen * 100;
+		    $Sflags[$k] = 0; # this "N$vo" count is complete
+		};
+	    };
+	    $fNG && $sum >= $glenNG && do { # NG50 stats !!!
+		$vars->{$preNG.'_SQL'} = $ln;
+		$vars->{$preNG.'_SQN'} = $sqn;
+		$vars->{$preNG.'_SQBP'} = $sum;
+		# $vars->{$preNG.'_SQBP_pct'} = $sum / $glenNG * 50;
+		#          $glenNG is already half the real length thus $sum/($glenNG*2)*100
+		$fNG = 0;
+	    };
+	};
+	$vars->{'N50-NG50_'.$lbl.'_SQLDIF'} = ($vars->{'NG50_'.$lbl.'_SQL'} ne 'NA'
+					       ? $vars->{'N50_'.$lbl.'_SQL'} - $vars->{'NG50_'.$lbl.'_SQL'}
+					       : 'NA');
+
+	# get percents
+	foreach my $v (@Nvars, 'G50') {
+	    $pre = 'N'.$v.'_'.$lbl;
+	    $vars->{$pre.'_SQN_pct'} = (($mxseq > 0 && $vars->{$pre.'_SQN'} ne 'NA')
+					? $vars->{$pre.'_SQN'} / $mxseq * 100
+					: 'NA');
+	    # $vars->{$pre.'_SQN_rel_pct'} = (($vars->{'TotalSQ'} > 0 && $vars->{$pre.'_SQN'} ne 'NA')
+	    #				    ? $vars->{$pre.'_SQN'} / $vars->{'TotalSQ'} * 100
+	    #				    : 'NA');
+	};
+	
+	return;
+    };
+
+    # leave vars initialized to zero otherwise,
+    # to avoid isues with undef vars when printign summary
+    foreach my $vo (@Nvars) {
+	$pre = 'N'.$vo.'_'.$lbl;
+	$vars->{$pre.'_SQL'}      = 0;
+	$vars->{$pre.'_SQN'}      = 0;
+	$vars->{$pre.'_SQBP'}     = 0;
+	# $vars->{$pre.'_SQBP_pct'} = 0;
+    };
+    $vars->{$preNG.'_SQL'}      = 0;
+    $vars->{$preNG.'_SQN'}      = 0;
+    $vars->{$preNG.'_SQBP'}     = 0;
+    # $vars->{$preNG.'_SQBP_pct'} = 0;
+
+    print STDERR "#    --> Skipping because this set has less than 2 sequences...\n" if $_verbose{'RAW'};
+
+} # get_Nstats
+
+sub print_report($$$) {
+    my ($vars, $label, $shrtlbl, $title, $str, $totalbpct, $eglflg);
+
+    &report('HEADER',"WRITING SUMMARY to STDOUT");
+
+    ($vars, $label, $title) =@_;
+    $shrtlbl = uc(substr($label,0,1));
+    my @SEQSETS = @{ $vars->{'aux_LBLS'} };
+    my @Nvars = qw( 10 20 30 40 50 60 70 80 90 G50 50-NG50 );
+
+    # Setting Labels
+    $vars->{'TotalBP_lbl'}      = 'Size_includeN';
+    $vars->{'TotalBP_noN_lbl'}  = 'Size_withoutN';
+    $vars->{'TotalSQ_lbl'}      = $label.'_Num';
+    $vars->{'MeanLength_lbl'}   = 'Mean_Size';
+    $vars->{'MedianLength_lbl'} = 'Median_Size';
+    $vars->{'LongestSeq_lbl'}   = 'Longest_Seq';
+    $vars->{'ShortestSeq_lbl'}  = 'Shortest_Seq ';
+
+    foreach my $set ('<100', @SEQSETS) {
+	# $vars->{'SQ_>100_lbl'}  = $label.'>100';
+	# $vars->{'SQ_>200_lbl'}  = $label.'>200';
+	# $vars->{'SQ_>500_lbl'}  = $label.'>500';
+	# $vars->{'SQ_>1k_lbl'}   = $label.'>1k';
+	# $vars->{'SQ_>10k_lbl'}  = $label.'>10k';
+	# $vars->{'SQ_>100k_lbl'} = $label.'>100k';
+	# $vars->{'SQ_>1M_lbl'}   = $label.'>1M';
+	# $set = uc($set);
+	$vars->{'SQ_' . $set . '_lbl'} = $label . $set;
+	$vars->{'SQ_' . $set         } = 'NA' unless defined($vars->{'SQ_' . $set});
+	$vars->{'SQ_' . $set . '_pct'} = 'NA' unless defined($vars->{'SQ_' . $set . '_pct'});
+    };
+
+    $vars->{'NUC_A_lbl'}   = 'Nucleotide_A';
+    $vars->{'NUC_C_lbl'}   = 'Nucleotide_C';
+    $vars->{'NUC_G_lbl'}   = 'Nucleotide_G';
+    $vars->{'NUC_T_lbl'}   = 'Nucleotide_T';
+    $vars->{'NUC_N_lbl'}   = 'GapContent_N';
+    $vars->{'NUC_O_lbl'}   = 'Non_ACGTN';
+    $vars->{'GC_pct_lbl'}  = 'GC_Content';
+
+    $vars->{'N10_ALL_lbl'} = 'N10';
+    $vars->{'N20_ALL_lbl'} = 'N20';
+    $vars->{'N30_ALL_lbl'} = 'N30';
+    $vars->{'N40_ALL_lbl'} = 'N40';
+    $vars->{'N50_ALL_lbl'} = 'N50';
+    $vars->{'N60_ALL_lbl'} = 'N60';
+    $vars->{'N70_ALL_lbl'} = 'N70';
+    $vars->{'N80_ALL_lbl'} = 'N80';
+    $vars->{'N90_ALL_lbl'} = 'N90';
+    $vars->{'NG50_ALL_lbl'} = 'NG50';
+    $vars->{'N50-NG50_ALL_lbl'} = 'N50-NG50_contig_length_diff...';
+
+    foreach my $set (@SEQSETS) {
+	my ($lbs, $baslbl, $thylbl);
+	$lbs = $set; # $shrtlbl.$set;
+	foreach my $sset (@Nvars) {
+	    $baslbl = 'N' . $sset . '_ALL_lbl';
+	    $thylbl = 'N' . $sset . '_' . $lbs . '_lbl';
+	    $vars->{$thylbl} = $shrtlbl . $lbs . '.' . $vars->{$baslbl}; 
+	};
+	$vars->{'SubTotals_' . $lbs . '_lbl'} = $shrtlbl . $lbs . '_Sequence_Subtotals';
+    };
+
+    # some defaults
+    # $vars->{'NG50_ALL_SQL'} = 'NA';
+    # $vars->{'NG50_ALL_SQN'}  = 'NA';
+    # $vars->{'NG50_ALL_SQN_pct'}  = 'NA';
+    # $vars->{'N50-NG50_ALL_SQNDIF'} = 'NA';
+
+    # formating numbers
+    foreach my $ky (keys %$vars) {
+	$ky =~ /^aux_/ && next;
+
+	$vars->{$ky} = 'NA' unless defined($vars->{$ky});
+
+	$ky =~ /_lbl$/o && d {
+	    $vars->{$ky} = sprintf("%-30s",
+				   (defined($vars->{$ky}) && $vars->{$ky} ne 'NA'
+				    ? $vars->{$ky}
+				    : 'NA'));
+	    $vars->{$ky} =~ s/ /./g;
+	    next;
+	};
+
+	$ky =~ /_pct$/o && d {
+	    $vars->{$ky} = sprintf("%8s%%",
+				   (defined($vars->{$ky}) && $vars->{$ky} ne 'NA'
+				    ? sprintf("%.2f", $vars->{$ky})
+				    : 'NA'));
+	    next;
+	};
+
+	$vars->{$ky} = sprintf("%12s",
+			       (defined($vars->{$ky}) && $vars->{$ky} ne 'NA'
+				? sprintf("%d", $vars->{$ky})
+				: 'NA'));
+    }; # foreach $ky
+
+    $totalbpct = q{};
+    $eglflg = $vars->{'EXPECTED_GENOME_LENGTH'} != $vars->{'TotalBP'} ? 1 : 0; 
+    $title .= "\n" unless $title eq q{};
+
+    $eglflg && do {
+	$title .= sprintf("%-30s %s\n",
+			  'Expected_Genome_Size..........',
+			  sprintf("%12s",$vars->{'EXPECTED_GENOME_LENGTH'}));
+	$totalbpct = sprintf(" %8s%%", sprintf("%.2f", $vars->{'TotalBP'} / $vars->{'EXPECTED_GENOME_LENGTH'} * 100));
+    };
+
+    # output string
+    $str =<<"+++EOR+++";
+$title$vars->{'TotalBP_lbl'} $vars->{'TotalBP'}$totalbpct
+$vars->{'TotalBP_noN_lbl'} $vars->{'TotalBP_noN'} $vars->{'TotalBP_noN_pct'}
+$vars->{'TotalSQ_lbl'} $vars->{'TotalSQ'}
+$vars->{'MeanLength_lbl'} $vars->{'MeanLength'}
+$vars->{'MedianLength_lbl'} $vars->{'MedianLength'}
+$vars->{'LongestSeq_lbl'} $vars->{'LongestSeq'}
+$vars->{'ShortestSeq_lbl'} $vars->{'ShortestSeq'}
+
+$vars->{'SQ_<100_lbl'} $vars->{'SQ_<100_SUM'} $vars->{'SQ_<100_SUM_pct'} $vars->{'SQ_<100'} $vars->{'SQ_<100_pct'}
+$vars->{'SQ_>100_lbl'} $vars->{'SQ_>100_SUM'} $vars->{'SQ_>100_SUM_pct'} $vars->{'SQ_>100'} $vars->{'SQ_>100_pct'}
+$vars->{'SQ_>200_lbl'} $vars->{'SQ_>200_SUM'} $vars->{'SQ_>200_SUM_pct'} $vars->{'SQ_>200'} $vars->{'SQ_>200_pct'}
+$vars->{'SQ_>500_lbl'} $vars->{'SQ_>500_SUM'} $vars->{'SQ_>500_SUM_pct'} $vars->{'SQ_>500'} $vars->{'SQ_>500_pct'}
+$vars->{'SQ_>1k_lbl'} $vars->{'SQ_>1k_SUM'} $vars->{'SQ_>1k_SUM_pct'} $vars->{'SQ_>1k'} $vars->{'SQ_>1k_pct'}
+$vars->{'SQ_>10k_lbl'} $vars->{'SQ_>10k_SUM'} $vars->{'SQ_>10k_SUM_pct'} $vars->{'SQ_>10k'} $vars->{'SQ_>10k_pct'}
+$vars->{'SQ_>100k_lbl'} $vars->{'SQ_>100k_SUM'} $vars->{'SQ_>100k_SUM_pct'} $vars->{'SQ_>100k'} $vars->{'SQ_>100k_pct'}
+$vars->{'SQ_>1M_lbl'} $vars->{'SQ_>1M_SUM'} $vars->{'SQ_>1M_SUM_pct'} $vars->{'SQ_>1M'} $vars->{'SQ_>1M_pct'}
+
+$vars->{'NUC_A_lbl'} $vars->{'NUC_A'} $vars->{'NUC_A_pct'}
+$vars->{'NUC_C_lbl'} $vars->{'NUC_C'} $vars->{'NUC_C_pct'}
+$vars->{'NUC_G_lbl'} $vars->{'NUC_G'} $vars->{'NUC_G_pct'}
+$vars->{'NUC_T_lbl'} $vars->{'NUC_T'} $vars->{'NUC_T_pct'}
+$vars->{'NUC_N_lbl'} $vars->{'NUC_N'} $vars->{'NUC_N_pct'}
+$vars->{'NUC_O_lbl'} $vars->{'NUC_O'} $vars->{'NUC_O_pct'}
+$vars->{'GC_pct_lbl'} $vars->{'GC_pct'}\[ACGT\] $vars->{'GCT_pct'}\[ACTGN\]
++++EOR+++
+    # $vars->{'N10_ALL_lbl'} $vars->{'N10_ALL_SQL'} $vars->{'N10_ALL_SQN'} $vars->{'N10_ALL_SQN_pct'}
+    # $vars->{'N20_ALL_lbl'} $vars->{'N20_ALL_SQL'} $vars->{'N20_ALL_SQN'} $vars->{'N20_ALL_SQN_pct'}
+    # $vars->{'N30_ALL_lbl'} $vars->{'N30_ALL_SQL'} $vars->{'N30_ALL_SQN'} $vars->{'N30_ALL_SQN_pct'}
+    # $vars->{'N40_ALL_lbl'} $vars->{'N40_ALL_SQL'} $vars->{'N40_ALL_SQN'} $vars->{'N40_ALL_SQN_pct'}
+    # $vars->{'N50_ALL_lbl'} $vars->{'N50_ALL_SQL'} $vars->{'N50_ALL_SQN'} $vars->{'N50_ALL_SQN_pct'}
+    # $vars->{'N60_ALL_lbl'} $vars->{'N60_ALL_SQL'} $vars->{'N60_ALL_SQN'} $vars->{'N60_ALL_SQN_pct'}
+    # $vars->{'N70_ALL_lbl'} $vars->{'N70_ALL_SQL'} $vars->{'N70_ALL_SQN'} $vars->{'N70_ALL_SQN_pct'}
+    # $vars->{'N80_ALL_lbl'} $vars->{'N80_ALL_SQL'} $vars->{'N80_ALL_SQN'} $vars->{'N80_ALL_SQN_pct'}
+    # $vars->{'N90_ALL_lbl'} $vars->{'N90_ALL_SQL'} $vars->{'N90_ALL_SQN'} $vars->{'N90_ALL_SQN_pct'}
+    # $vars->{'NG50_ALL_lbl'} $vars->{'NG50_ALL_SQL'} $vars->{'NG50_ALL_SQN'} $vars->{'NG50_ALL_SQN_pct'}
+    # $vars->{'N50-NG50_ALL_lbl'} $vars->{'N50-NG50_ALL_SQLDIF'}
+ 
+    if ($vars->{'TotalSQ'} > 1) {
+	foreach my $set ('ALL', @SEQSETS) {
+	    my ($lbs, $baslbl, $thylbl, $thyvar);
+	    $lbs = $set; # $set ne 'ALL' ? $shrtlbl.$set : $set;
+	    # skip whole empty N50 stats for a subset if it contains less than 2 sequences
+	    $str .= "\n";
+	    (exists($vars->{'SQ_'.$set}) && defined($vars->{'SQ_'.$set}) && $vars->{'SQ_'.$set} > 1) || do {
+		$str .= '# ' . $shrtlbl . $set . ('.' x (30 - length($set))) .
+		        ' Nstats_skipped_because_less_than_2_seqs_on_the_set' . "\n";
+		next;
+	    };
+            #
+	    foreach my $sset (@Nvars) {
+		$thyvar = 'N' . $sset . '_' . $lbs;
+		$sset eq '50-NG50' && do {
+		    # N50 - NG50 difference only makes sense for the complete sequence set (ALL)
+		    $eglflg && $set eq 'ALL' && do {
+			$str .= $vars->{$thyvar.'_lbl'} . q{ } . # '......' .
+			    (exists($vars->{$thyvar.'_SQLDIF'}) && defined($vars->{$thyvar.'_SQLDIF'})
+			     ? $vars->{$thyvar.'_SQLDIF'}
+			     : 'NA') . "\n";
+		    };
+		    $eglflg = 0; # 
+		    next;
+		};
+		$sset eq 'G50' && !$eglflg && next;
+		$str .= $vars->{$thyvar.'_lbl'} . q{ } .
+		    (exists($vars->{$thyvar.'_SQL'}) && defined($vars->{$thyvar.'_SQL'})
+		     ? $vars->{$thyvar.'_SQL'}
+		     : 'NA') . q{ } .
+			 (exists($vars->{$thyvar.'_SQBP'}) && defined($vars->{$thyvar.'_SQBP'})
+			  ? $vars->{$thyvar.'_SQBP'}
+			  : 'NA') . q{ } . 
+			      # (exists($vars->{$thyvar.'_SQBP_pct'}) && defined($vars->{$thyvar.'_SQBP_pct'})
+			      #  ? $vars->{$thyvar.'_SQBP_pct'}
+			      #  : 'NA') . q{ } .
+				   (exists($vars->{$thyvar.'_SQN'}) && defined($vars->{$thyvar.'_SQN'})
+				    ? $vars->{$thyvar.'_SQN'}
+				    : 'NA') . q{ } . 
+					(exists($vars->{$thyvar.'_SQN_pct'}) && defined($vars->{$thyvar.'_SQN_pct'})
+					 ? $vars->{$thyvar.'_SQN_pct'}
+					 : 'NA') . "\n";
+	    };
+	    # $set ne 'ALL' && do {
+	    # 	$thyvar = 'SQ_'.$set;
+	    # 	$str .= $vars->{'SubTotals_' . $lbs . '_lbl'} . q{ } .
+	    # 	    (exists($vars->{$thyvar}) && defined($vars->{$thyvar})
+	    # 	     ? $vars->{$thyvar}
+	    # 	     : 'NA') . q{ } .
+	    # 		 (exists($vars->{$thyvar.'_SUM'}) && defined($vars->{$thyvar.'_SUM'})
+	    # 		  ? $vars->{$thyvar.'_SUM'}
+	    # 		  : 'NA') . "\n";
+	    # };
+	};
+    } else {
+	$str .= "\n#-> Cannot compute N50 stats for a single sequence...\n";
+    };
+
+    print STDOUT $str;
+
+    print STDERR Data::Dumper->Dump([ $vars ], [ qw( *VARS ) ]) if $_verbose{'DEBUG'};
+
+} # print_report
