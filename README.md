@@ -81,7 +81,7 @@ To install this module, run the following commands:
 This package depends on the following `Perl` modules, make sure they are installed on your system:
 
 ```
-perl -MCPAN -e'install Term::ANSIColor Inline Inline::C Inline::Files'
+perl -MCPAN -e'install Term::ANSIColor Inline Inline::C Inline::Files Inline::Filters'
 ```
 
 # License and copyright
