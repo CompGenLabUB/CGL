@@ -11,7 +11,7 @@ WriteMakefile(
     LICENSE          => 'artistic_2',
     PL_FILES         => {},
     MIN_PERL_VERSION => '5.006',
-    EXE_FILES        => ['bin/cdna2orfs', 'bin/tblshuffle', 'bin/coverage_blastshorttbl', 'bin/tbl2fa', 'bin/fa2tbl', 'bin/grepID'],
+    EXE_FILES        => ['bin/cdna2orfs', 'bin/N50stats', 'bin/tblshuffle', 'bin/coverage_blastshorttbl', 'bin/tbl2fa', 'bin/fa2tbl', 'bin/grepID'],
     CONFIGURE_REQUIRES => {
         'ExtUtils::MakeMaker' => '0',
     },
