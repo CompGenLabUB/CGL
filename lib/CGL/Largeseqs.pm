@@ -35,7 +35,7 @@ use vars qw( @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION
 	     );
 
 use Exporter;
-$VERSION = substr('$Id$', 5, -2); # $VERSION = '1.00';
+$VERSION = substr('$Id: 1.0 $', 5, -2); # $VERSION = '1.00';
 @ISA = qw(Exporter);
 @EXPORT = qw(
            set_verbose LS_v LS_LNC LS_lnm LS_LNM

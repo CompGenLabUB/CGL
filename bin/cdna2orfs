@@ -39,7 +39,7 @@ use CGL::Largeseqs qw( :PERLiofh :MULTIfasta :SAVEfasta :TRANSLATE :REVCOMPseq :
 #
 # VARS
 $PROG = 'cdna2orfs.pl';
-$VERSION = substr('$Id$', 5, -2);
+$VERSION = substr('$Id: 1.0 $', 5, -2);
 $USAGE =<<'+++EOH+++';
 USAGE:
 

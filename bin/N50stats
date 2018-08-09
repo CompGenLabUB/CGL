@@ -39,7 +39,7 @@ use CGL::Largeseqs qw( :PERLiofh :MULTIfasta :DNAsqcomp );
 #
 # VARS
 $PROG = 'N50stats.pl';
-$VERSION = substr('$Id$', 5, -2);
+$VERSION = substr('$Id: 1.0 $', 5, -2);
 $USAGE =<<'+++EOH+++';
 USAGE:
 

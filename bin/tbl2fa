@@ -40,7 +40,7 @@ use CGL::Largeseqs qw( :PERLiofh :MULTItbl :SAVEfasta );
 #
 # VARS
 $PROG = 'tbl2fa.pl';
-$VERSION = substr('$Id$', 5, -2);
+$VERSION = substr('$Id: 1.0 $', 5, -2);
 $USAGE =<<'+++EOH+++';
 USAGE:
 

@@ -39,7 +39,7 @@ use vars qw(
            );
 
 use Exporter;
-$VERSION = substr('$Id$', 5, -2);
+$VERSION = substr('$Id: 1.0 $', 5, -2);
 @ISA = qw(Exporter);
 @EXPORT = qw(
            $PLVER $PROG $VERSION $USAGE $DATE $CDATE $USER $HOST
