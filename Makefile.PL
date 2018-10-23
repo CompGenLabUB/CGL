@@ -2,6 +2,9 @@ use 5.006;
 use strict;
 use warnings;
 use ExtUtils::MakeMaker;
+use File::ShareDir::Install;
+
+install_share dist => 'share';
 
 WriteMakefile(
     NAME             => 'CGL',
@@ -17,11 +20,16 @@ WriteMakefile(
     },
     BUILD_REQUIRES => {
         'Test::More' => '0',
+        'File::ShareDir::Install' => 0
     },
     PREREQ_PM => {
         'Inline::C'  => '0',
         'Inline::Filters' => '0',
+        'File::Share' => '0'
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'CGL-*' },
 );
+
+package MY;
+use File::ShareDir::Install 'postamble';
