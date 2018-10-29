@@ -1,0 +1,134 @@
+#!/usr/bin/perl
+=head1 gunalias
+
+Normalizes gene symbols.
+
+=head1 SYNOPSIS
+
+    gunalias [-h] [-i INPUT] [-o OUTPUT] [-c COLUMN] [-s SEPARATOR] [-d DICTIONARY]
+
+=head1 DESCRIPTION
+
+gunalias normalizes gene and protein symbols using a symbol dictionary.
+
+By default, input and output will be STDOUT and STDIN respectively, although both can be changed with option -i and -o.
+
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-h>, B<-help>
+
+Shows this help.
+
+=item B<-i>, B<-input> FILE
+
+Input file to normalize gene names from. If not specified, will use STDIN.
+
+=item B<-o>, B<-output> FILE
+
+Output file to write normalized table. If not specified, will write to STDOUT.
+
+=item B<-c>, B<-column> INTEGER
+
+Column in input or STDIN where the gene names are so that gunalias can normalize them. Should be bigger than 1. Default is 1.
+
+=item B<-s>, B<-separator> STRING
+
+Separator character (or Perl-compatible regular expression) that defines columns in input or STDIN. By default "\t".
+
+=item B<-d>, B<-dictionary> FILE
+
+Dictionary file for CGL::Unalias to use. If not specified, gunalias will use the default HGNC dictionary of the CGL::Unalias module.
+
+=back
+
+=cut
+
+use strict;
+use warnings;
+use CGL::Unalias;
+use Getopt::Long qw(:config no_ignore_case);
+use Pod::Usage;
+
+# ------------------------------------
+# FUNCTIONS
+
+sub get_options {
+    my %options = ();
+    GetOptions (
+        \%options    ,
+        'help|?'     ,
+        "input=s"    ,
+        "output=s"   ,
+        "column=i"   ,
+        "dictionary=s",
+        "separator=s"
+    );
+
+    # If help
+    pod2usage(-verbose => 1) if defined $options{'help'};
+
+    # Defaults
+    if (not defined $options{'column'}) {
+        $options{'column'} = 0;
+    } elsif ($options{'column'} <= 0) {
+        die "Option -c should be an integer >= 1 !\n";
+    } else {
+        # To make it 0 indexed
+        $options{'column'} -= 1;
+    }
+
+    if (not defined $options{'separator'}) {
+        $options{'separator'} = "\t";
+    }
+    return \%options;
+}
+
+
+sub unalias_table {
+    my $opts = shift;
+    my $ifh;
+    my $ofh;
+    if (defined $opts->{'input'}){
+        open $ifh, "<", $opts->{'input'} 
+            or die "Can't open $opts->{'input'}! : $!\n";
+    } else {
+        $ifh = *STDIN;
+    }
+
+    my $unalias = new CGL::Unalias;
+    if (defined $opts->{'dictionary'}) {
+        $unalias->load($opts->{'dictionary'});
+    } else {
+        $unalias->load();
+    }
+
+    if (defined $opts->{'output'}) {
+        open $ofh, ">", $opts->{'output'}
+            or die "Can't write to $opts->{'output'}\n";
+    } else {
+        $ofh = *STDOUT;
+    }
+
+    while (<$ifh>) {
+        chomp;
+        my @cols = split /$opts->{'separator'}/;
+        next if /^#/;
+        print STDERR "WARNING: Column specified exceeds number of columns in input file (", 
+                     $opts->{'column'} + 1, 
+                     " vs ", 
+                     scalar(@cols), ")\n" if scalar(@cols) < ($opts->{'column'} + 1);
+        next unless $cols[$opts->{'column'}];
+        $cols[$opts->{'column'}] = $unalias->unalias($cols[$opts->{'column'}]);
+        print $ofh join($opts->{'separator'}, @cols), "\n";
+    }
+
+}
+
+
+# ------------------------------------
+# MAIN
+my $opts = get_options();
+unalias_table($opts);

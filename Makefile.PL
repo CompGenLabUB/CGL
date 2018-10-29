@@ -14,7 +14,7 @@ WriteMakefile(
     LICENSE          => 'artistic_2',
     PL_FILES         => {},
     MIN_PERL_VERSION => '5.006',
-    EXE_FILES        => ['bin/cdna2orfs', 'bin/N50stats', 'bin/tblshuffle', 'bin/coverage_blastshorttbl', 'bin/tbl2fa', 'bin/fa2tbl', 'bin/fa2fa', 'bin/grepID'],
+    EXE_FILES        => ['bin/cdna2orfs', 'bin/N50stats', 'bin/tblshuffle', 'bin/coverage_blastshorttbl', 'bin/tbl2fa', 'bin/fa2tbl', 'bin/fa2fa', 'bin/grepID', 'bin/gunalias'],
     CONFIGURE_REQUIRES => {
         'ExtUtils::MakeMaker' => '0',
     },
@@ -25,7 +25,8 @@ WriteMakefile(
     PREREQ_PM => {
         'Inline::C'  => '0',
         'Inline::Filters' => '0',
-        'File::Share' => '0'
+        'File::Share' => '0',
+	'Pod::Usage' => '0'
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'CGL-*' },
