@@ -5,7 +5,7 @@ Normalizes gene symbols.
 
 =head1 SYNOPSIS
 
-    gunalias [-h] [-i INPUT] [-o OUTPUT] [-c COLUMN] [-s SEPARATOR] [-d DICTIONARY]
+    gunalias [-h] [-i INPUT] [-o OUTPUT] [-c COLUMN [-c COLUMN] ...] [-s SEPARATOR] [-d DICTIONARY]
 
 =head1 DESCRIPTION
 
@@ -22,6 +22,10 @@ By default, input and output will be STDOUT and STDIN respectively, although bot
 
 Shows this help.
 
+=item B<-v>, B<-verbose>
+
+Change verbosity.
+
 =item B<-i>, B<-input> FILE
 
 Input file to normalize gene names from. If not specified, will use STDIN.
@@ -30,9 +34,10 @@ Input file to normalize gene names from. If not specified, will use STDIN.
 
 Output file to write normalized table. If not specified, will write to STDOUT.
 
-=item B<-c>, B<-column> INTEGER
+=item B<-c>, B<-columns> INTEGER
 
-Column in input or STDIN where the gene names are so that gunalias can normalize them. Should be bigger than 1. Default is 1.
+Columns in input or STDIN where the gene names are so that gunalias can normalize them. Should be bigger than 1. 
+Default is 1. Normalize multiple columns by specifying the option multiple times, e.g.: `gunalias -c 1 -c 2`
 
 =item B<-s>, B<-separator> STRING
 
@@ -60,24 +65,29 @@ sub get_options {
     GetOptions (
         \%options    ,
         'help|?'     ,
+        "verbose|?"  ,
         "input=s"    ,
         "output=s"   ,
-        "column=i"   ,
+        "columns=i@"   ,
         "dictionary=s",
-        "separator=s"
+        "separator=s",
     );
 
     # If help
     pod2usage(-verbose => 1) if defined $options{'help'};
 
     # Defaults
-    if (not defined $options{'column'}) {
-        $options{'column'} = 0;
-    } elsif ($options{'column'} <= 0) {
-        die "Option -c should be an integer >= 1 !\n";
+    if (not defined $options{'columns'}) {
+        $options{'columns'} = [0];
     } else {
-        # To make it 0 indexed
-        $options{'column'} -= 1;
+        # Check that all columns are > 0 and make them 0-indexed.
+        foreach my $icol (0..$#{ $options{'columns'} }) {
+            if ($options{'columns'}->[$icol] <= 0) {
+                die "Option -c should be an integer >= 1 !\n";
+            } else {
+                $options{'columns'}->[$icol] -= 1;
+            }
+        }
     }
 
     if (not defined $options{'separator'}) {
@@ -87,28 +97,53 @@ sub get_options {
 }
 
 
-sub unalias_table {
+sub print_start {
     my $opts = shift;
+    print STDERR "\n gunalias - Normalize gene/protein symbols.\n",
+                   "\t# Program started.\n";
+    return;
+}
+
+
+sub print_finished {
+    print STDERR "\t# Program finished.\n\n";
+    return;
+}
+
+
+sub unalias_table {
+    my $opts       = shift;
+    my $input_name = "STDIN";
     my $ifh;
     my $ofh;
-    if (defined $opts->{'input'}){
-        open $ifh, "<", $opts->{'input'} 
-            or die "Can't open $opts->{'input'}! : $!\n";
-    } else {
-        $ifh = *STDIN;
-    }
 
     my $unalias = new CGL::Unalias;
+    print STDERR "\t# Loading gene symbol dictionary..." if $opts->{'verbose'};
     if (defined $opts->{'dictionary'}) {
         $unalias->load($opts->{'dictionary'});
     } else {
         $unalias->load();
     }
+    print STDERR "done.\n" if $opts->{'verbose'};
 
+    if (defined $opts->{'input'}) {
+        print STDERR "\t# Reading file $opts->{'input'}.\n" if $opts->{'verbose'};
+        open $ifh, "<", $opts->{'input'} 
+            or die "Can't open $opts->{'input'}! : $!\n";
+    } else {
+        print STDERR "\t# Reading from STDIN.\n" if $opts->{'verbose'};
+        $ifh = *STDIN;
+    }
+
+    print STDERR "\t# Normalizing columns ", 
+                 join(",", map { my $var = $_; $var += 1; } @{ $opts->{'columns'} } ), 
+                 "\n" if $opts->{'verbose'};
     if (defined $opts->{'output'}) {
+        print STDERR "\t# Writing to $opts->{'output'}.\n" if $opts->{'verbose'};
         open $ofh, ">", $opts->{'output'}
             or die "Can't write to $opts->{'output'}\n";
     } else {
+        print STDERR "# Writing to STDOUT.\n" if $opts->{'verbose'};
         $ofh = *STDOUT;
     }
 
@@ -116,19 +151,24 @@ sub unalias_table {
         chomp;
         my @cols = split /$opts->{'separator'}/;
         next if /^#/;
-        print STDERR "WARNING: Column specified exceeds number of columns in input file (", 
-                     $opts->{'column'} + 1, 
+        foreach my $col (@{ $opts->{'columns'} }) {
+            print STDERR "\tWARNING: Column specified exceeds number of columns in input file (", 
+                     $col + 1, 
                      " vs ", 
-                     scalar(@cols), ")\n" if scalar(@cols) < ($opts->{'column'} + 1);
-        next unless $cols[$opts->{'column'}];
-        $cols[$opts->{'column'}] = $unalias->unalias($cols[$opts->{'column'}]);
+                     scalar(@cols), ")\n" if scalar(@cols) < ($col + 1);
+
+            $cols[$col] = $unalias->unalias($cols[$col]);
+        }
         print $ofh join($opts->{'separator'}, @cols), "\n";
     }
 
+    return;
 }
 
 
 # ------------------------------------
 # MAIN
 my $opts = get_options();
+print_start($opts) if $opts->{'verbose'};
 unalias_table($opts);
+print_finished if $opts->{'verbose'};
