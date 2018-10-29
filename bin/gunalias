@@ -118,10 +118,12 @@ sub unalias_table {
     my $ofh;
 
     my $unalias = new CGL::Unalias;
-    print STDERR "\t# Loading gene symbol dictionary..." if $opts->{'verbose'};
+    print STDERR "\t# Loading gene symbol dictionary...\n" if $opts->{'verbose'};
     if (defined $opts->{'dictionary'}) {
-        $unalias->load($opts->{'dictionary'});
+        print STDERR "\t# Loading custom dictionary: $opts->{'dictionary'}.\n" if $opts->{'verbose'};
+        $unalias->load($opts->{'dictionary'}, 0);
     } else {
+        print STDERR "\t# Loading default HGNC dictionary.\n" if $opts->{'verbose'};
         $unalias->load();
     }
     print STDERR "done.\n" if $opts->{'verbose'};
