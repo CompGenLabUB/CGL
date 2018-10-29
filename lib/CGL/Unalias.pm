@@ -7,7 +7,7 @@ Module to normalize gene/protein names consistenly.
     use CGL::Unalias;
     my $dict = new CGL::Unalias;
     $dict->load();
-    $dict->unalias("MAPK4");
+    $dict->unalias("MAPK2");
 
 =head2 METHODS
 
