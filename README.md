@@ -66,6 +66,13 @@ From a sequence file in fasta format, compute N50 assembly statistics
 for different sequence length ranges.
 ```
 
+**gunalias**
+
+```
+Normalize gene/protein names according to the HGNC dictionary, or to any specified symbol dictionary.
+
+see `man gunalias` or `man CGl::Unalias`.
+```
 
 # Installation
 
