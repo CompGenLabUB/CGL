@@ -1,6 +1,6 @@
 # CGL
 
-Modules and scripts of general use for the Computational Genomics Lab
+Modules and scripts of general use for the [Computational Genomics Lab](https://compgen.bio.ub.edu/)
 
 Includes:
 
