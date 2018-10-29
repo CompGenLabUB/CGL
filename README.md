@@ -71,7 +71,9 @@ for different sequence length ranges.
 ```
 Normalize gene/protein names according to the HGNC dictionary, or to any specified symbol dictionary.
 
-see `man gunalias` or `man CGl::Unalias`.
+Can be used for any other symbol mappings to by using option `-d`.
+
+see `man gunalias` or `man CGL::Unalias`.
 ```
 
 # Installation
