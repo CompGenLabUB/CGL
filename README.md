@@ -113,7 +113,7 @@ perl -MCPAN -e'install Term::ANSIColor Inline Inline::C Inline::Files Inline::Fi
 ```
 </details>
 
-### fa2tbl*
+### fa2tbl
 
 
 > Converting a sequence input stream in FASTA format to tabular.
