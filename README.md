@@ -25,11 +25,11 @@ Includes:
 
 ```
                                                                           
- PROGRAM:   grepID.pl - version 1.0                                       
+ PROGRAM:   grepID - version 1.0                                       
                                                                           
  USAGE:                                                                   
                                                                           
-    grepID.pl [options] ids.file genes.file > filtered_genes.file         
+    grepID [options] ids.file genes.file > filtered_genes.file         
                                                                           
                                                                           
  DESCRIPTION:                                                             
@@ -106,11 +106,11 @@ Includes:
 
 ```
                                                                           
- PROGRAM:   fa2tbl.pl - version 1.0                                       
+ PROGRAM:   fa2tbl - version 1.0                                       
                                                                           
  USAGE:                                                                   
                                                                           
-   fa2tbl.pl [ options ] < prot_seq.fasta > prot_seq.tbl                  
+   fa2tbl [ options ] < prot_seq.fasta > prot_seq.tbl                  
                                                                           
                                                                           
  DESCRIPTION:                                                             
@@ -155,11 +155,11 @@ Includes:
 
 ```
                                                                           
- PROGRAM:   tbl2fa.pl - version 1.0                                       
+ PROGRAM:   tbl2fa - version 1.0                                       
                                                                           
  USAGE:                                                                   
                                                                           
-   tbl2fa.pl [ options ] < prot_seq.tbl > prot_seq.fasta                  
+   tbl2fa [ options ] < prot_seq.tbl > prot_seq.fasta                  
                                                                           
                                                                           
  DESCRIPTION:                                                             
@@ -254,11 +254,11 @@ accounting for overlaps among HSPs within each single query and target sequence.
 
 ```
                                                                           
- PROGRAM:   cdna2orfs.pl - version 1.0                                    
+ PROGRAM:   cdna2orfs - version 1.0                                    
                                                                           
  USAGE:                                                                   
                                                                           
-   cdna2orfs.pl [ options ] < prot_seq.tbl > prot_seq.fasta               
+   cdna2orfs [ options ] < prot_seq.tbl > prot_seq.fasta               
                                                                           
                                                                           
  DESCRIPTION:                                                             
@@ -326,12 +326,6 @@ accounting for overlaps among HSPs within each single query and target sequence.
 > Converting a sequence input stream in tabular format to shuffled tabular.
 
 
-### fa2fa
-
-
-> Cleaning fasta sequences from non-standard symbols (like '*'), 
-also providing reverse, complement, and reverse-complement options.
-
 <details>
 <summary>Usage</summary>
 
@@ -370,6 +364,67 @@ also providing reverse, complement, and reverse-complement options.
                                                                           
 ```
 
+
+### fa2fa
+
+
+> Cleaning fasta sequences from non-standard symbols (like '*'), 
+also providing reverse, complement, and reverse-complement options.
+
+
+<details>
+<summary>Usage</summary>
+
+```
+                                                                          
+ PROGRAM:   fa2fa - version 1.0                                        
+                                                                          
+ USAGE:                                                                   
+                                                                          
+   fa2fa [ options ] < prot_seq.tbl > prot_seq.fasta                   
+                                                                          
+                                                                          
+ DESCRIPTION:                                                             
+                                                                          
+   Fixing fasta files: standard sequence IDs, removing weird chars,       
+   and so on.                                                             
+   It is quite fast as it uses C functions from largeseqs.pm (via         
+   Inline perl module).                                                   
+                                                                          
+                                                                          
+ COMMAND-LINE OPTIONS:                                                    
+                                                                          
+   -R, --reverse-seq                                                      
+     Returns the reverse sequence of each input sequence.                 
+                                                                          
+   -C, --complement-seq                                                   
+     Returns the complement sequence for each input sequence.             
+                                                                          
+   -RC, --reverse-complement                                              
+     Returning the reverse-complement for all the input seqs.             
+                                                                          
+   -Z, --gzip-output                                                      
+     Compress output on the fly and send to stdout.                       
+                                                                          
+   -p, --fix-id-prefix <regexp>                                           
+   -s, --fix-id-suffix <regexp>                                           
+      Fixing IDs by removing a prefix or a suffix from the ID string.     
+      <regexp> sets a regular expression which defines what has to be     
+      removed from input sequence IDs.                                    
+                                                                          
+   The following command-line options are set by default                  
+   when using "CGL::Global.pm":                                           
+                                                                          
+            -h, --help  Shows this help.                                  
+             --version  Shows version for current script.                 
+         -v, --verbose  Execution messages are sent to STDERR.            
+   -V, --color-verbose  Messages are text-coloured to highlight           
+                        different kinds of messages.                      
+               --debug  All execution messages are sent to STDERR,        
+                        including dumps of the internal data structures.  
+                                                                          
+```
+
 </details>
 
 
@@ -383,18 +438,18 @@ for different sequence length ranges.
 <summary>Usage</summary>
 
 ```
- PROGRAM:   N50stats.pl - version 1.0                                     
+ PROGRAM:   N50stats - version 1.0                                     
                                                                           
  USAGE:                                                                   
                                                                           
-   N50stats.pl [options] seqsfile.fasta                                   
+   N50stats [options] seqsfile.fasta                                   
                                                                           
                                                                           
  DESCRIPTION:                                                             
                                                                           
    From a sequence file in fasta format, compute N50 assembly statistics  
    for different sequence length ranges. This script extends previous     
-   count_fasta.pl program developed by Joseph Fass at the Bioinformatics  
+   count_fasta program developed by Joseph Fass at the Bioinformatics  
    Core at UC Davis Genome Center, modified from a script by Brad Sickler.
    The point is to get further info from sequences length distribution,   
    as well as segmenting the N50 calculation by fixed length ranges,      
@@ -508,7 +563,7 @@ Options:
 To install this module, run the following commands:
 
 ```
-	perl Makefile.PL
+	perl Makefile.pl
 	make
 	make test
 	make install
