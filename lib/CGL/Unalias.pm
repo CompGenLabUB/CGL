@@ -62,8 +62,9 @@ sub load {
     while (my $line = <$fh>) {
         chomp($line);
         my ($off, @rest) = split /$separator/, $line;
+        $off = $self->clean_symbol($off);
         foreach my $alias (@rest) {
-            $self->{'dictionary'}->{ $self->clean_symbol($alias) } = $self->clean_symbol($off);
+            $self->{'dictionary'}->{ $self->clean_symbol($alias) } = $off;
         }
     }
     return;
@@ -79,7 +80,7 @@ Removes strange symbols and makes gene symbols upper case.
 
 =cut
 sub clean_symbol {
-    my $self = shift;
+    my $self   = shift;
     my $string = shift;
     $string = uc($string);
     $string =~ s/[^\w\t\s\d]//gi;
