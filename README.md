@@ -2,7 +2,25 @@
 
 Modules and scripts of general use for the [Computational Genomics Lab](https://compgen.bio.ub.edu/)
 
-Includes:
+
+## Installation
+
+To install this module, run the following commands:
+
+```
+	perl Makefile.pl
+	make
+	make test
+	make install
+```
+
+## Requirements
+
+This package depends on the following `Perl` modules, make sure they are installed on your system:
+
+```
+perl -MCPAN -e'install Term::ANSIColor Inline Inline::C Inline::Files Inline::Filters'
+```
 
 ## Modules
 
@@ -363,7 +381,7 @@ accounting for overlaps among HSPs within each single query and target sequence.
                         including dumps of the internal data structures.  
                                                                           
 ```
-
+</details>
 
 ### fa2fa
 
@@ -558,26 +576,8 @@ Options:
 </details>
 
 
-# Installation
 
-To install this module, run the following commands:
-
-```
-	perl Makefile.pl
-	make
-	make test
-	make install
-```
-
-## Requirements
-
-This package depends on the following `Perl` modules, make sure they are installed on your system:
-
-```
-perl -MCPAN -e'install Term::ANSIColor Inline Inline::C Inline::Files Inline::Filters'
-```
-
-# License and copyright
+## License and copyright
 
 Copyright (C) 2018 JF Abril
 
@@ -616,4 +616,3 @@ YOUR LOCAL LAW. UNLESS REQUIRED BY LAW, NO COPYRIGHT HOLDER OR
 CONTRIBUTOR WILL BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, OR
 CONSEQUENTIAL DAMAGES ARISING IN ANY WAY OUT OF THE USE OF THE PACKAGE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
