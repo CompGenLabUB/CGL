@@ -579,7 +579,8 @@ Options:
 
 ## License and copyright
 
-Copyright (C) 2018 JF Abril
+Copyright (C) 2018 Computational Genomics Lab @ UB 
+with contributions from J.F. Abril, S. Castillo-Lara, R. Arenas-Galnares
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the the Artistic License (2.0). You may obtain a
