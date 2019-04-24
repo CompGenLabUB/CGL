@@ -579,8 +579,12 @@ Options:
 ## Tricks
 
 <details>
-<summary>Changing name of fasta files</summary>
+<summary>Changing name of sequence identifiers in fasta file</summary>
+	
+```
 	fa2tbl fasta.fa | gunalias -c 1 -d ids.txt | tbl2fa > fasta.newids.fa 
+```
+
 </details>
 
 
