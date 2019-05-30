@@ -68,17 +68,45 @@ sub load {
         $off = $self->clean_symbol($off);
         $self->{"official_symbols"}{$off} = 1;
         foreach my $alias (@rest) {
-            if (exists $self->{'dictionary'}->{ $self->clean_symbol($alias) }) {
-                carp("Ambiguous alias (alias has > 1 official symbol): $alias\n");
-            }
-            if (exists $self->{"official_symbols"}{$alias}) {
-                carp("Ambiguous alias (alias is also official symbol). Skipping: $alias\n");
+            my $cleaned_alias = $self->clean_symbol($alias);
+            next if $self->is_alias_empty($cleaned_alias);
+            $self->warn_if_ambiguous_alias($cleaned_alias, $off);
+
+            if ($self->is_alias_official($cleaned_alias)) {
+                carp("Ambiguous alias (alias is also official symbol). Skipping: $cleaned_alias\n");
                 next;
             }
-            $self->{'dictionary'}->{ $self->clean_symbol($alias) } = $off;
+            $self->{'dictionary'}->{ $cleaned_alias } = $off;
         }
     }
     return;
+}
+
+
+sub is_alias_empty {
+    my $self = shift;
+    my $cleaned_alias = shift;
+    return not $cleaned_alias;
+}
+
+sub warn_if_ambiguous_alias {
+    my $self            = shift;
+    my $cleaned_alias   = shift;
+    my $official_symbol = shift;
+    if (exists $self->{'dictionary'}->{ $cleaned_alias }) {
+        if ($official_symbol ne $self->{'dictionary'}->{ $cleaned_alias }) {
+            carp("Ambiguous alias (alias has > 1 official symbol): $cleaned_alias\n");
+        } # else means official symbol appears several times through file: not a problem.
+    }
+    return;
+}
+
+
+sub is_alias_official {
+    my $self = shift;
+    my $cleaned_alias = shift;
+
+    return exists $self->{"official_symbols"}{$cleaned_alias};
 }
 
 
