@@ -18,7 +18,7 @@ package CGL::Unalias;
 use strict;
 use warnings;
 use File::Share ':all';
-use Carp qw( croak );
+use Carp qw( croak carp );
 
 
 =item new()
@@ -32,6 +32,8 @@ Creates CGL::Unalias object.
 sub new {
     my $class = shift;
     my $self  = { @_ };
+    $self->{"dictionary"}       = ();
+    $self->{"official_symbols"} = ();
     return bless $self, $class;
 }
 
@@ -53,20 +55,42 @@ sub load {
     my $dict_file = shift // dist_file("CGL", "HGNC_gene_dictionary.txt");
     my $skip      = shift // 1; 
     my $separator = shift // "\t";
-    $self->{'dictionary'} = ();
+    $self->empty_dictionary();
 
     open(my $fh, "<", $dict_file)
         or die "Can't open dictionary file: $dict_file - $!\n";
     
     <$fh> if $skip; # skip first (header) line of dictionary
+
     while (my $line = <$fh>) {
         chomp($line);
         my ($off, @rest) = split /$separator/, $line;
         $off = $self->clean_symbol($off);
+        $self->{"official_symbols"}{$off} = 1;
         foreach my $alias (@rest) {
+            if (exists $self->{'dictionary'}->{ $self->clean_symbol($alias) }) {
+                carp("Ambiguous alias (alias has > 1 official symbol): $alias\n");
+            }
+            if (exists $self->{"official_symbols"}{$alias}) {
+                carp("Ambiguous alias (alias is also official symbol). Skipping: $alias\n");
+                next;
+            }
             $self->{'dictionary'}->{ $self->clean_symbol($alias) } = $off;
         }
     }
+    return;
+}
+
+
+=item clean_symbol()
+
+Empties dictionary (if any is loaded) and official symbols.
+
+=cut
+sub empty_dictionary {
+    my $self = shift;
+    $self->{"dictionary"} = ();
+    $self->{"official_symbols"} = ();
     return;
 }
 
