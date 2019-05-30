@@ -101,13 +101,13 @@ sub get_options {
 sub print_start {
     my $opts = shift;
     print STDERR "\n gunalias - Normalize gene/protein symbols.\n",
-                   "\t# Program started.\n";
+                   "# Program started.\n";
     return;
 }
 
 
 sub print_finished {
-    print STDERR "\t# Program finished.\n\n";
+    print STDERR "# Program finished.\n\n";
     return;
 }
 
@@ -115,15 +115,15 @@ sub load_gene_dictionary {
     my $opts = shift;
     my $unalias = shift;
 
-    print STDERR "\t# Loading gene symbol dictionary...\n" if $opts->{'verbose'};
+    print STDERR "# Loading gene symbol dictionary...\n" if $opts->{'verbose'};
     if (defined $opts->{'dictionary'}) {
-        print STDERR "\t# Loading custom dictionary: $opts->{'dictionary'}.\n" if $opts->{'verbose'};
+        print STDERR "# Loading custom dictionary: $opts->{'dictionary'}.\n" if $opts->{'verbose'};
         $unalias->load($opts->{'dictionary'}, 0);
     } else {
-        print STDERR "\t# Loading default HGNC dictionary.\n" if $opts->{'verbose'};
+        print STDERR "# Loading default HGNC dictionary.\n" if $opts->{'verbose'};
         $unalias->load();
     }
-    print STDERR "done.\n" if $opts->{'verbose'};
+    print STDERR "# Loading gene symbol dictionary... done.\n" if $opts->{'verbose'};
 
     return;
 }

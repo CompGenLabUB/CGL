@@ -73,7 +73,7 @@ sub load {
             $self->warn_if_ambiguous_alias($cleaned_alias, $off);
 
             if ($self->is_alias_official($cleaned_alias)) {
-                carp("Ambiguous alias (alias is also official symbol). Skipping: $cleaned_alias\n");
+                carp("# WARNING: Ambiguous alias (alias is also official symbol). Skipping: $cleaned_alias\n");
                 next;
             }
             $self->{'dictionary'}->{ $cleaned_alias } = $off;
@@ -95,7 +95,7 @@ sub warn_if_ambiguous_alias {
     my $official_symbol = shift;
     if (exists $self->{'dictionary'}->{ $cleaned_alias }) {
         if ($official_symbol ne $self->{'dictionary'}->{ $cleaned_alias }) {
-            carp("Ambiguous alias (alias has > 1 official symbol): $cleaned_alias\n");
+            carp("# WARNING: Ambiguous alias (alias has > 1 official symbol): $cleaned_alias\n");
         } # else means official symbol appears several times through file: not a problem.
     }
     return;

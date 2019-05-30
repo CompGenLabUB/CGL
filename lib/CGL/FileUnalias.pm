@@ -65,7 +65,7 @@ sub unalias_column {
     my $col  = shift;
 
     if (scalar(@{ $cols }) < ($col + 1)) {
-        print STDERR "\tWARNING: Column specified exceeds number of columns in input file (", 
+        print STDERR "# WARNING: Column specified exceeds number of columns in input file (", 
                      $col + 1, 
                      " vs ", 
                      scalar(@{ $cols }), ")\n";
